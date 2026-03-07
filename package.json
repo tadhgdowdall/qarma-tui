@@ -1,0 +1,31 @@
+{
+  "name": "qarma-tui",
+  "version": "0.1.0",
+  "description": "Terminal UI for running Qarma natural language browser tests locally or in the cloud.",
+  "license": "MIT",
+  "author": "Tadhg Dowdall",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tadhgdowdall/qarma-tui.git"
+  },
+  "homepage": "https://github.com/tadhgdowdall/qarma-tui",
+  "bugs": {
+    "url": "https://github.com/tadhgdowdall/qarma-tui/issues"
+  },
+  "module": "src/index.ts",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.86"
+  }
+}
