@@ -1,6 +1,6 @@
 import type { SecretStore } from "../../core/ports/secret-store";
 
-export type SecretSource = "session" | "env" | "missing";
+export type SecretSource = "session" | "secure" | "env" | "missing";
 
 export type MutableSecretStore = SecretStore & {
   set(secretRef: string, value: string): void;
@@ -8,7 +8,15 @@ export type MutableSecretStore = SecretStore & {
   source(secretRef: string): Promise<SecretSource>;
 };
 
-export function createSessionSecretStore(base: SecretStore): MutableSecretStore {
+type SessionSecretStoreDependencies = {
+  secure?: SecretStore;
+  env: SecretStore;
+  base: SecretStore;
+};
+
+export function createSessionSecretStore(
+  dependencies: SessionSecretStoreDependencies,
+): MutableSecretStore {
   const overrides = new Map<string, string>();
 
   return {
@@ -30,15 +38,20 @@ export function createSessionSecretStore(base: SecretStore): MutableSecretStore 
         return override;
       }
 
-      return base.get(secretRef);
+      return dependencies.base.get(secretRef);
     },
     async source(secretRef) {
       if (overrides.has(secretRef)) {
         return "session";
       }
 
-      const value = await base.get(secretRef);
-      return value ? "env" : "missing";
+      const secureValue = dependencies.secure ? await dependencies.secure.get(secretRef) : null;
+      if (secureValue) {
+        return "secure";
+      }
+
+      const envValue = await dependencies.env.get(secretRef);
+      return envValue ? "env" : "missing";
     },
   };
 }

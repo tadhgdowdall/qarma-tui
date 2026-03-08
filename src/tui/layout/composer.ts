@@ -21,7 +21,7 @@ export function createComposer(
 
   composer.add(
     new TextRenderable(renderer, {
-      content: "Describe the flow to verify, or use /settings, /target, /openai-key.",
+      content: "Describe the flow to verify, or use /settings, /target, /openai-key, /save-openai-key.",
       fg: "#a3a3a3",
       attributes: TextAttributes.DIM,
       wrapMode: "none",

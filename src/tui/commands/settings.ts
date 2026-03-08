@@ -1,7 +1,6 @@
 import type { RunSettings } from "../state/run-settings";
 import type { MutableSecretStore } from "../../infra/storage/session-secret-store";
-import { getExpectedEnvName } from "../../infra/storage/env-secret-store";
-import { removeLocalEnvVar, writeLocalEnvVar } from "../../infra/storage/local-env-file";
+import { macosKeychainStore } from "../../infra/storage/macos-keychain-store";
 
 export type SettingsCommandResult =
   | { kind: "noop" }
@@ -55,6 +54,30 @@ export async function applySettingsCommand(
     };
   }
 
+  if (command === "help" || command === "commands") {
+    return {
+      kind: "message",
+      content: [
+        "Commands",
+        "  /settings",
+        "  /target <url>",
+        "  /openai-key <key>",
+        "  /clear-openai-key",
+        "  /save-openai-key <key>",
+        "  /clear-saved-openai-key",
+        "  /model <model-id>",
+        "  /provider openai-local|qarma-managed",
+        "  /headless on|off",
+        "",
+        "Shortcuts",
+        "  ctrl+y copy selected text",
+        "  tab toggle sidebar",
+        "  q quit",
+        "  ctrl+g dev-skip on landing",
+      ].join("\n"),
+    };
+  }
+
   if (command === "target") {
     if (!argument) {
       return { kind: "message", content: "Usage: /target http://localhost:3000", accent: "#f87171" };
@@ -92,33 +115,47 @@ export async function applySettingsCommand(
       return { kind: "message", content: "Usage: /save-openai-key sk-...", accent: "#f87171" };
     }
 
-    const envName = getExpectedEnvName(OPENAI_SECRET_REF);
-    if (!envName) {
-      return { kind: "message", content: "OpenAI key mapping is unavailable.", accent: "#f87171" };
+    if (!macosKeychainStore.isAvailable()) {
+      return { kind: "message", content: "Secure key storage is not available on this platform.", accent: "#f87171" };
     }
 
-    writeLocalEnvVar(envName, argument);
-    secrets.set(OPENAI_SECRET_REF, argument);
-    return {
-      kind: "message",
-      content: "Saved OpenAI key to local .env.local and loaded it for this session.",
-      accent: "#4ade80",
-    };
+    try {
+      macosKeychainStore.set(OPENAI_SECRET_REF, argument);
+      secrets.clear(OPENAI_SECRET_REF);
+      return {
+        kind: "message",
+        content: "Saved OpenAI key to secure local storage.",
+        accent: "#4ade80",
+      };
+    } catch (error) {
+      return {
+        kind: "message",
+        content: error instanceof Error ? error.message : "Failed to save key to secure local storage.",
+        accent: "#f87171",
+      };
+    }
   }
 
   if (command === "clear-saved-openai-key") {
-    const envName = getExpectedEnvName(OPENAI_SECRET_REF);
-    if (!envName) {
-      return { kind: "message", content: "OpenAI key mapping is unavailable.", accent: "#f87171" };
+    if (!macosKeychainStore.isAvailable()) {
+      return { kind: "message", content: "Secure key storage is not available on this platform.", accent: "#f87171" };
     }
 
-    removeLocalEnvVar(envName);
-    secrets.clear(OPENAI_SECRET_REF);
-    return {
-      kind: "message",
-      content: "Removed saved OpenAI key from local .env.local and cleared the session override.",
-      accent: "#4ade80",
-    };
+    try {
+      macosKeychainStore.clear(OPENAI_SECRET_REF);
+      secrets.clear(OPENAI_SECRET_REF);
+      return {
+        kind: "message",
+        content: "Removed saved OpenAI key from secure local storage and cleared the session override.",
+        accent: "#4ade80",
+      };
+    } catch (error) {
+      return {
+        kind: "message",
+        content: error instanceof Error ? error.message : "Failed to remove key from secure local storage.",
+        accent: "#f87171",
+      };
+    }
   }
 
   if (command === "model") {

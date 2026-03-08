@@ -72,16 +72,17 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function appendStepMessage(step: TestRunStep) {
-    const details = [
-      step.action ? `action ${step.action}` : null,
-      step.observation ? `note ${step.observation}` : null,
-      step.url ? `url ${step.url}` : null,
-    ].filter(Boolean);
-
     const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
-      content: details.length ? `${step.title} — ${details.join(" | ")}` : step.title,
+      content: [
+        step.title,
+        step.action ? `  action: ${step.action}` : null,
+        step.observation ? `  note: ${step.observation}` : null,
+        step.url ? `  url: ${step.url}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
     } as const;
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
@@ -265,6 +266,11 @@ export function mountHomeRoute(renderer: CliRenderer) {
   };
 
   renderer.keyInput.on("keypress", (key) => {
+    if (!workspaceActive && key.ctrl && key.name === "g") {
+      activateWorkspace();
+      return;
+    }
+
     if (!workspaceActive) {
       return;
     }
