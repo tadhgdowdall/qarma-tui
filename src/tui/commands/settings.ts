@@ -1,4 +1,5 @@
 import type { RunSettings } from "../state/run-settings";
+import { resolveTargetPreset } from "../state/run-settings";
 import type { MutableSecretStore } from "../../infra/storage/session-secret-store";
 import { macosKeychainStore } from "../../infra/storage/macos-keychain-store";
 
@@ -50,7 +51,7 @@ export async function applySettingsCommand(
     const keySource = await secrets.source(OPENAI_SECRET_REF);
     return {
       kind: "message",
-      content: `Mode ${settings.executionMode}. Target ${settings.targetUrl}. Provider ${settings.providerProfileId}. Model ${settings.modelId || "provider-default"}. Headless ${settings.headless ? "on" : "off"}. OpenAI key source ${keySource}.`,
+      content: `Mode ${settings.executionMode}. Target ${settings.targetUrl}${settings.targetPreset ? ` (${settings.targetPreset})` : ""}. Provider ${settings.providerProfileId}. Model ${settings.modelId || "provider-default"}. Headless ${settings.headless ? "on" : "off"}. OpenAI key source ${keySource}.`,
     };
   }
 
@@ -60,7 +61,7 @@ export async function applySettingsCommand(
       content: [
         "Commands",
         "  /settings",
-        "  /target <url>",
+        "  /target <url|local|staging|prod>",
         "  /openai-key <key>",
         "  /clear-openai-key",
         "  /save-openai-key <key>",
@@ -83,12 +84,29 @@ export async function applySettingsCommand(
 
   if (command === "target") {
     if (!argument) {
-      return { kind: "message", content: "Usage: /target http://localhost:3000", accent: "#f87171" };
+      return { kind: "message", content: "Usage: /target http://localhost:3000 or /target local", accent: "#f87171" };
     }
+
+    const preset = resolveTargetPreset(argument);
+    if (preset) {
+      settings.targetUrl = preset.url;
+      settings.targetPreset = preset.name;
+      return { kind: "message", content: `Target preset updated to ${preset.name} (${settings.targetUrl}).`, accent: "#4ade80" };
+    }
+
+    if (["staging", "stage", "prod", "production"].includes(argument.toLowerCase())) {
+      return {
+        kind: "message",
+        content: `Target preset ${argument.toLowerCase()} is not configured. Set QARMA_TARGET_${argument.toLowerCase().startsWith("prod") ? "PRODUCTION" : "STAGING"} first.`,
+        accent: "#f87171",
+      };
+    }
+
     if (!isValidHttpUrl(argument)) {
       return { kind: "message", content: "Target must start with http:// or https://", accent: "#f87171" };
     }
     settings.targetUrl = argument;
+    settings.targetPreset = undefined;
     return { kind: "message", content: `Target updated to ${settings.targetUrl}.`, accent: "#4ade80" };
   }
 

@@ -1,8 +1,11 @@
 import type { RunRequest } from "../../core/models/run";
 
+export type TargetPresetName = "local" | "staging" | "production";
+
 export type RunSettings = {
   workspaceId: string;
   targetUrl: string;
+  targetPreset?: TargetPresetName;
   executionMode: "local" | "cloud";
   providerProfileId: string;
   modelSource: "user_api_key" | "qarma_managed";
@@ -16,7 +19,11 @@ export type RunSettings = {
 
 export const defaultRunSettings: RunSettings = {
   workspaceId: process.env.QARMA_WORKSPACE_ID || "demo-workspace",
-  targetUrl: process.env.QARMA_TARGET_URL || "http://localhost:3000",
+  targetUrl:
+    process.env.QARMA_TARGET_LOCAL ||
+    process.env.QARMA_TARGET_URL ||
+    "http://localhost:3000",
+  targetPreset: "local",
   executionMode: "local",
   providerProfileId: process.env.QARMA_PROVIDER_PROFILE || "openai-local",
   modelSource: process.env.QARMA_PROVIDER_PROFILE === "qarma-managed" ? "qarma_managed" : "user_api_key",
@@ -52,4 +59,30 @@ export function formatRunSettings(settings: RunSettings): string {
   const provider = settings.providerProfileId === "qarma-managed" ? "qarma" : "openai";
   const model = settings.modelId || "provider-default";
   return `${settings.executionMode}  ${settings.targetUrl.replace(/^https?:\/\//, "")}  ${provider}  ${model}`;
+}
+
+export function resolveTargetPreset(preset: string) {
+  const normalized = preset.toLowerCase();
+
+  if (normalized === "local") {
+    return {
+      name: "local" as const,
+      url:
+        process.env.QARMA_TARGET_LOCAL ||
+        process.env.QARMA_TARGET_URL ||
+        "http://localhost:3000",
+    };
+  }
+
+  if (normalized === "staging" || normalized === "stage") {
+    const url = process.env.QARMA_TARGET_STAGING;
+    return url ? { name: "staging" as const, url } : null;
+  }
+
+  if (normalized === "prod" || normalized === "production") {
+    const url = process.env.QARMA_TARGET_PRODUCTION;
+    return url ? { name: "production" as const, url } : null;
+  }
+
+  return null;
 }

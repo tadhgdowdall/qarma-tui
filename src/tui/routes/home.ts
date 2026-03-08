@@ -33,7 +33,28 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let transcriptSeeded = false;
   let runInFlight = false;
   let lastSubmittedPrompt = "";
+  let activeRunStatus: "idle" | "running" | "passed" | "failed" | "cancelled" = "idle";
+  let activeRunStartedAt: number | null = null;
+  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   const transcriptMessages: Message[] = [];
+
+  function stopElapsedTimer() {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+    }
+  }
+
+  function elapsedSeconds() {
+    if (!activeRunStartedAt) {
+      return 0;
+    }
+    return Math.max(0, Math.floor((Date.now() - activeRunStartedAt) / 1000));
+  }
+
+  function normalizeRunStatus(status: TestRun["status"]) {
+    return status === "queued" ? "running" : status;
+  }
 
   function seedTranscript() {
     if (transcriptSeeded) {
@@ -77,14 +98,13 @@ export function mountHomeRoute(renderer: CliRenderer) {
     const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
-      content: [
-        step.title,
-        step.action ? `  action: ${step.action}` : null,
-        step.observation ? `  note: ${step.observation}` : null,
-        step.url ? `  url: ${step.url}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      content: step.title,
+      detailLines: [
+        step.action ? `action  ${step.action}` : null,
+        step.observation ? `note    ${step.observation}` : null,
+        step.url ? `url     ${step.url}` : null,
+      ].filter((line): line is string => Boolean(line)),
+      stepStatus: step.status,
       variant: "step",
     } as const;
     transcriptMessages.push(message);
@@ -119,7 +139,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function syncStatusbar() {
-    statusbar.update(runSettings);
+    statusbar.update(runSettings, {
+      status: activeRunStatus,
+      elapsedSeconds: elapsedSeconds(),
+    });
     renderer.root.requestRender();
   }
 
@@ -165,6 +188,11 @@ export function mountHomeRoute(renderer: CliRenderer) {
     lastSubmittedPrompt = trimmed;
     appendPromptExchange(trimmed);
     runInFlight = true;
+    activeRunStatus = "running";
+    activeRunStartedAt = Date.now();
+    stopElapsedTimer();
+    elapsedTimer = setInterval(syncStatusbar, 1000);
+    syncStatusbar();
 
     appendSystemMessage(`Starting ${formatRunSettings(runSettings)} run.`);
     const openAiKeySource = await services.secrets.source("openai_api_key");
@@ -185,14 +213,18 @@ export function mountHomeRoute(renderer: CliRenderer) {
         },
       );
 
+      activeRunStatus = normalizeRunStatus(run.status);
       appendRunSummary(run);
     } catch (error) {
+      activeRunStatus = "failed";
       appendSystemMessage(
         `Run failed to start: ${error instanceof Error ? error.message : String(error)}`,
         "#f87171",
       );
     } finally {
       runInFlight = false;
+      stopElapsedTimer();
+      syncStatusbar();
     }
   }
 
@@ -214,12 +246,16 @@ export function mountHomeRoute(renderer: CliRenderer) {
     }
 
     if (trimmed === "/clear") {
+      stopElapsedTimer();
+      activeRunStatus = "idle";
+      activeRunStartedAt = null;
       transcriptMessages.length = 0;
       for (const child of transcript.getChildren()) {
         transcript.remove(child.id);
       }
       input.value = "";
       input.focus();
+      syncStatusbar();
       renderer.root.requestRender();
       return;
     }
@@ -242,6 +278,11 @@ export function mountHomeRoute(renderer: CliRenderer) {
         appendSystemMessage("No run is currently in progress.", "#f87171");
       } else {
         const cancelled = await services.localRunner.cancelCurrentRun();
+        if (cancelled) {
+          activeRunStatus = "cancelled";
+          stopElapsedTimer();
+          syncStatusbar();
+        }
         appendSystemMessage(
           cancelled ? "Cancelling current run..." : "No active local process to cancel.",
           cancelled ? "#f97316" : "#f87171",
@@ -342,4 +383,5 @@ export function mountHomeRoute(renderer: CliRenderer) {
   renderer.root.add(landingView);
   renderer.root.add(shell.app);
   landingInput.focus();
+  syncStatusbar();
 }

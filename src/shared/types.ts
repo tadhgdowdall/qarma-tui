@@ -3,6 +3,8 @@ export type Message = {
   content: string;
   accent: string;
   variant?: "default" | "prompt" | "step" | "system";
+  detailLines?: string[];
+  stepStatus?: "queued" | "running" | "passed" | "failed" | "info";
 };
 
 export type SessionSummary = {

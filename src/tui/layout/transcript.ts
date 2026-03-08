@@ -67,16 +67,25 @@ export function addTranscriptMessage(
   transcript: ScrollBoxRenderable,
   message: Message,
 ) {
+  const stepBorderColor =
+    message.stepStatus === "passed"
+      ? "#4ade80"
+      : message.stepStatus === "failed"
+        ? "#f87171"
+        : message.stepStatus === "running"
+          ? "#f97316"
+          : "#1f1f1f";
+
   const bubble = new BoxRenderable(renderer, {
     flexDirection: "column",
     backgroundColor:
       message.variant === "step"
         ? "#111111"
         : message.variant === "system"
-          ? "#080808"
-          : "#0a0a0a",
+        ? "#080808"
+        : "#0a0a0a",
     border: message.variant === "step",
-    borderColor: message.variant === "step" ? "#1f1f1f" : undefined,
+    borderColor: message.variant === "step" ? stepBorderColor : undefined,
     paddingTop: message.variant === "step" ? 1 : 0,
     paddingRight: message.variant === "step" ? 1 : 0,
     paddingBottom: 1,
@@ -96,16 +105,44 @@ export function addTranscriptMessage(
     }),
   );
 
-  bubble.add(
-    new TextRenderable(renderer, {
-      content: message.content,
-      fg: "#f5f5f5",
-      wrapMode: "word",
-      selectable: true,
-      selectionBg: "#f97316",
-      selectionFg: "#050505",
-    }),
-  );
+  if (message.variant === "step") {
+    bubble.add(
+      new TextRenderable(renderer, {
+        content: message.content,
+        fg: "#f5f5f5",
+        wrapMode: "word",
+        selectable: true,
+        selectionBg: "#f97316",
+        selectionFg: "#050505",
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+
+    for (const detailLine of message.detailLines || []) {
+      bubble.add(
+        new TextRenderable(renderer, {
+          content: detailLine,
+          fg: "#bfbfbf",
+          wrapMode: "word",
+          selectable: true,
+          selectionBg: "#f97316",
+          selectionFg: "#050505",
+          attributes: TextAttributes.DIM,
+        }),
+      );
+    }
+  } else {
+    bubble.add(
+      new TextRenderable(renderer, {
+        content: message.content,
+        fg: "#f5f5f5",
+        wrapMode: "word",
+        selectable: true,
+        selectionBg: "#f97316",
+        selectionFg: "#050505",
+      }),
+    );
+  }
 
   transcript.add(bubble);
   transcript.scrollTo({ y: transcript.scrollHeight, x: 0 });
