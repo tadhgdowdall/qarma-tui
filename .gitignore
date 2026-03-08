@@ -37,6 +37,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 *.tmp
 *.swp
 *.swo
+__pycache__/
+*.pyc
 
 # local tool state
 .bun
