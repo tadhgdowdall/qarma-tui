@@ -8,7 +8,7 @@ import { createSidebar } from "../layout/sidebar";
 import { createTranscriptPanel, addTranscriptMessage } from "../layout/transcript";
 import { createComposer } from "../layout/composer";
 import { createStatusBar } from "../layout/statusbar";
-import { applySettingsCommand } from "../commands/settings";
+import { applySettingsCommand, getCommandSuggestions, shouldAcceptSuggestion } from "../commands/settings";
 import { sampleMessages, sampleSessions } from "../state/mock-data";
 import { buildRunRequest, defaultRunSettings, formatRunSettings } from "../state/run-settings";
 import type { Message } from "../../shared/types";
@@ -23,7 +23,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   const shell = createShell(renderer);
   const sidebar = createSidebar(renderer, sampleSessions);
   const { panel: transcriptPanel, transcript } = createTranscriptPanel(renderer);
-  const { composer, input } = createComposer(renderer, handleWorkspaceSubmit);
+  const { composer, input, updateSuggestions, hideSuggestions } = createComposer(renderer, handleWorkspaceSubmit);
   const statusbar = createStatusBar(renderer, runSettings);
 
   let sidebarOpen = false;
@@ -36,6 +36,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let activeRunStatus: "idle" | "running" | "passed" | "failed" | "cancelled" = "idle";
   let activeRunStartedAt: number | null = null;
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  let commandSelectionIndex = 0;
   const transcriptMessages: Message[] = [];
 
   function stopElapsedTimer() {
@@ -146,6 +147,25 @@ export function mountHomeRoute(renderer: CliRenderer) {
     renderer.root.requestRender();
   }
 
+  function currentCommandSuggestions() {
+    return getCommandSuggestions(input.value);
+  }
+
+  function syncCommandSuggestions() {
+    const suggestions = currentCommandSuggestions();
+    if (suggestions.length === 0) {
+      commandSelectionIndex = 0;
+      hideSuggestions();
+      return;
+    }
+
+    if (commandSelectionIndex >= suggestions.length) {
+      commandSelectionIndex = 0;
+    }
+
+    updateSuggestions(suggestions, commandSelectionIndex);
+  }
+
   function copyLatestTranscriptMessage() {
     const selectedText = renderer.getSelection()?.getSelectedText().trim();
     if (selectedText) {
@@ -245,6 +265,16 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    const suggestions = currentCommandSuggestions();
+    const selectedSuggestion = suggestions[commandSelectionIndex];
+
+    if (selectedSuggestion && shouldAcceptSuggestion(trimmed, selectedSuggestion)) {
+      input.value = selectedSuggestion.insertValue;
+      syncCommandSuggestions();
+      input.focus();
+      return;
+    }
+
     if (trimmed === "/clear") {
       stopElapsedTimer();
       activeRunStatus = "idle";
@@ -297,12 +327,14 @@ export function mountHomeRoute(renderer: CliRenderer) {
     if (commandResult.kind === "message") {
       appendSystemMessage(commandResult.content, commandResult.accent);
       syncStatusbar();
+      hideSuggestions();
       input.value = "";
       input.focus();
       return;
     }
 
     void submitRun(trimmed);
+    hideSuggestions();
     input.value = "";
     input.focus();
   }
@@ -367,6 +399,24 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    if (key.name === "down") {
+      const suggestions = currentCommandSuggestions();
+      if (suggestions.length > 0) {
+        commandSelectionIndex = (commandSelectionIndex + 1) % suggestions.length;
+        updateSuggestions(suggestions, commandSelectionIndex);
+        return;
+      }
+    }
+
+    if (key.name === "up") {
+      const suggestions = currentCommandSuggestions();
+      if (suggestions.length > 0) {
+        commandSelectionIndex = (commandSelectionIndex - 1 + suggestions.length) % suggestions.length;
+        updateSuggestions(suggestions, commandSelectionIndex);
+        return;
+      }
+    }
+
     if (key.ctrl && key.name === "y") {
       copyLatestTranscriptMessage();
     }
@@ -382,6 +432,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
   sidebar.visible = false;
   renderer.root.add(landingView);
   renderer.root.add(shell.app);
+  input.on("input", () => {
+    commandSelectionIndex = 0;
+    syncCommandSuggestions();
+  });
   landingInput.focus();
   syncStatusbar();
 }

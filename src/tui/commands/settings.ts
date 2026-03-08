@@ -7,7 +7,32 @@ export type SettingsCommandResult =
   | { kind: "noop" }
   | { kind: "message"; content: string; accent?: string };
 
+export type CommandSuggestion = {
+  command: string;
+  insertValue: string;
+  summary: string;
+  keywords?: string[];
+  requiresArgument?: boolean;
+};
+
 const OPENAI_SECRET_REF = "openai_api_key";
+
+const COMMAND_SUGGESTIONS: CommandSuggestion[] = [
+  { command: "target", insertValue: "/target ", summary: "switch target URL or preset", keywords: ["url", "local", "staging", "prod"], requiresArgument: true },
+  { command: "settings", insertValue: "/settings", summary: "show effective runtime settings", keywords: ["config", "status"] },
+  { command: "help", insertValue: "/help", summary: "show commands and shortcuts", keywords: ["commands", "shortcuts"] },
+  { command: "openai-key", insertValue: "/openai-key ", summary: "load an OpenAI key for this session", keywords: ["key", "secret", "session"], requiresArgument: true },
+  { command: "save-openai-key", insertValue: "/save-openai-key ", summary: "save an OpenAI key to secure local storage", keywords: ["keychain", "secure", "persist"], requiresArgument: true },
+  { command: "clear-openai-key", insertValue: "/clear-openai-key", summary: "remove the session key override", keywords: ["reset", "key"] },
+  { command: "clear-saved-openai-key", insertValue: "/clear-saved-openai-key", summary: "remove the saved secure OpenAI key", keywords: ["keychain", "reset", "key"] },
+  { command: "model", insertValue: "/model ", summary: "switch the model id", keywords: ["gpt", "openai"], requiresArgument: true },
+  { command: "provider", insertValue: "/provider ", summary: "switch the provider profile", keywords: ["openai-local", "qarma-managed"], requiresArgument: true },
+  { command: "headless", insertValue: "/headless ", summary: "toggle browser visibility", keywords: ["browser", "visible", "ui"], requiresArgument: true },
+  { command: "cancel", insertValue: "/cancel", summary: "cancel the current local run", keywords: ["stop", "abort"] },
+  { command: "rerun", insertValue: "/rerun", summary: "rerun the last submitted prompt", keywords: ["repeat", "again"] },
+  { command: "clear", insertValue: "/clear", summary: "clear the transcript", keywords: ["wipe", "reset"] },
+  { command: "commands", insertValue: "/commands", summary: "alias for /help", keywords: ["help"] },
+];
 
 function normalizeProvider(profileId: string) {
   if (profileId === "qarma" || profileId === "qarma-managed") {
@@ -32,6 +57,77 @@ function isValidHttpUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function scoreSuggestion(query: string, suggestion: CommandSuggestion) {
+  const normalizedQuery = query.toLowerCase();
+  const command = suggestion.command.toLowerCase();
+  const keywords = suggestion.keywords || [];
+
+  if (!normalizedQuery) {
+    if (command === "target") return 120;
+    if (command === "settings") return 110;
+    if (command === "help") return 100;
+    return 80;
+  }
+
+  if (command === normalizedQuery) return 1000;
+  if (command.startsWith(normalizedQuery)) return 900 - command.length;
+  if (keywords.some((keyword) => keyword.toLowerCase() === normalizedQuery)) return 820;
+  if (keywords.some((keyword) => keyword.toLowerCase().startsWith(normalizedQuery))) return 760;
+  if (command.includes(normalizedQuery)) return 700 - command.indexOf(normalizedQuery);
+  if (keywords.some((keyword) => keyword.toLowerCase().includes(normalizedQuery))) return 640;
+
+  let fuzzyIndex = 0;
+  let matched = 0;
+  for (const char of normalizedQuery) {
+    fuzzyIndex = command.indexOf(char, fuzzyIndex);
+    if (fuzzyIndex === -1) {
+      return -1;
+    }
+    matched += 1;
+    fuzzyIndex += 1;
+  }
+
+  return 500 + matched;
+}
+
+export function getCommandSuggestions(value: string) {
+  const trimmed = value.trimStart();
+  if (!trimmed.startsWith("/")) {
+    return [];
+  }
+
+  const [rawCommand] = trimmed.slice(1).split(/\s+/, 1);
+  const query = rawCommand || "";
+
+  return COMMAND_SUGGESTIONS
+    .map((suggestion) => ({ suggestion, score: scoreSuggestion(query, suggestion) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((left, right) => right.score - left.score || left.suggestion.command.length - right.suggestion.command.length)
+    .slice(0, 6)
+    .map((entry) => entry.suggestion);
+}
+
+export function shouldAcceptSuggestion(value: string, suggestion: CommandSuggestion | undefined) {
+  if (!suggestion) {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) {
+    return false;
+  }
+
+  const [rawCommand, ...rest] = trimmed.slice(1).split(/\s+/);
+  const normalizedCommand = rawCommand || "";
+  const hasArgument = rest.join(" ").trim().length > 0;
+
+  if (normalizedCommand !== suggestion.command) {
+    return suggestion.command.startsWith(normalizedCommand);
+  }
+
+  return suggestion.requiresArgument === true && !hasArgument;
 }
 
 export async function applySettingsCommand(
@@ -74,6 +170,7 @@ export async function applySettingsCommand(
         "  /headless on|off",
         "",
         "Shortcuts",
+        "  up/down browse slash commands",
         "  ctrl+y copy selected text",
         "  tab toggle sidebar",
         "  q quit",
