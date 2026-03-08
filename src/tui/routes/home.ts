@@ -37,6 +37,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let activeRunStartedAt: number | null = null;
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   let commandSelectionIndex = 0;
+  let commandMenuOpen = false;
   const transcriptMessages: Message[] = [];
 
   function stopElapsedTimer() {
@@ -152,9 +153,15 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function syncCommandSuggestions() {
+    if (!commandMenuOpen) {
+      hideSuggestions();
+      return;
+    }
+
     const suggestions = currentCommandSuggestions();
     if (suggestions.length === 0) {
       commandSelectionIndex = 0;
+      commandMenuOpen = false;
       hideSuggestions();
       return;
     }
@@ -171,12 +178,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
     if (selectedText) {
       const copied = copyTextToClipboard(renderer, selectedText);
 
-      appendSystemMessage(
-        copied
-          ? "Copied selected transcript text to clipboard."
-          : "Clipboard copy is not supported by this terminal.",
-        copied ? "#4ade80" : "#f87171",
-      );
+      if (!copied) {
+        appendSystemMessage(
+          "Clipboard copy is not supported by this terminal.",
+          "#f87171",
+        );
+      }
       return;
     }
 
@@ -191,12 +198,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
       `${lastMessage.speaker}: ${lastMessage.content}`,
     );
 
-    appendSystemMessage(
-      copied
-        ? "Copied latest transcript message to clipboard."
-        : "Clipboard copy is not supported by this terminal.",
-      copied ? "#4ade80" : "#f87171",
-    );
+    if (!copied) {
+      appendSystemMessage(
+        "Clipboard copy is not supported by this terminal.",
+        "#f87171",
+      );
+    }
   }
 
   async function submitRun(value: string) {
@@ -214,12 +221,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
     elapsedTimer = setInterval(syncStatusbar, 1000);
     syncStatusbar();
 
-    appendSystemMessage(`Starting ${formatRunSettings(runSettings)} run.`);
     const openAiKeySource = await services.secrets.source("openai_api_key");
-    appendSystemMessage(
-      `Preflight OpenAI key source: ${openAiKeySource}.`,
-      openAiKeySource === "missing" ? "#f87171" : "#4ade80",
-    );
+    if (openAiKeySource === "missing") {
+      appendSystemMessage("OpenAI key is missing for the current session.", "#f87171");
+    } else {
+      appendSystemMessage(`Local run · ${formatRunSettings(runSettings)}`, "#737373");
+    }
 
     try {
       const run = await startRun(
@@ -268,7 +275,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     const suggestions = currentCommandSuggestions();
     const selectedSuggestion = suggestions[commandSelectionIndex];
 
-    if (selectedSuggestion && shouldAcceptSuggestion(trimmed, selectedSuggestion)) {
+    if (commandMenuOpen && selectedSuggestion && shouldAcceptSuggestion(trimmed, selectedSuggestion)) {
       input.value = selectedSuggestion.insertValue;
       syncCommandSuggestions();
       input.focus();
@@ -327,6 +334,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     if (commandResult.kind === "message") {
       appendSystemMessage(commandResult.content, commandResult.accent);
       syncStatusbar();
+      commandMenuOpen = false;
       hideSuggestions();
       input.value = "";
       input.focus();
@@ -334,6 +342,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     }
 
     void submitRun(trimmed);
+    commandMenuOpen = false;
     hideSuggestions();
     input.value = "";
     input.focus();
@@ -399,16 +408,36 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    if ((key.name === "return" || key.name === "linefeed") && !key.ctrl && !key.meta) {
+      const suggestions = currentCommandSuggestions();
+      const selectedSuggestion = suggestions[commandSelectionIndex];
+
+      if (commandMenuOpen && selectedSuggestion && shouldAcceptSuggestion(input.value, selectedSuggestion)) {
+        input.value = selectedSuggestion.insertValue;
+        syncCommandSuggestions();
+        input.focus();
+        return;
+      }
+    }
+
     if (key.name === "down") {
       const suggestions = currentCommandSuggestions();
       if (suggestions.length > 0) {
-        commandSelectionIndex = (commandSelectionIndex + 1) % suggestions.length;
+        if (!commandMenuOpen) {
+          commandMenuOpen = true;
+          commandSelectionIndex = 0;
+        } else {
+          commandSelectionIndex = (commandSelectionIndex + 1) % suggestions.length;
+        }
         updateSuggestions(suggestions, commandSelectionIndex);
         return;
       }
     }
 
     if (key.name === "up") {
+      if (!commandMenuOpen) {
+        return;
+      }
       const suggestions = currentCommandSuggestions();
       if (suggestions.length > 0) {
         commandSelectionIndex = (commandSelectionIndex - 1 + suggestions.length) % suggestions.length;
@@ -434,6 +463,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   renderer.root.add(shell.app);
   input.on("input", () => {
     commandSelectionIndex = 0;
+    commandMenuOpen = input.value.trimStart().startsWith("/");
     syncCommandSuggestions();
   });
   landingInput.focus();

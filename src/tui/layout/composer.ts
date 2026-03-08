@@ -9,28 +9,24 @@ export function createComposer(
   const composer = new BoxRenderable(renderer, {
     flexDirection: "column",
     flexShrink: 0,
-    border: true,
-    borderColor: "#f97316",
-    backgroundColor: "#0f0f0f",
-    padding: 1,
-    gap: 1,
-    minHeight: 5,
+    backgroundColor: "#0a0a0a",
+    paddingTop: 0,
+    paddingRight: 1,
+    paddingBottom: 0,
+    paddingLeft: 1,
+    gap: 0,
     overflow: "hidden",
-    title: "Prompt",
   });
 
-  composer.add(
-    new TextRenderable(renderer, {
-      content: "Describe the flow to verify, or use /settings, /target, /openai-key, /save-openai-key.",
-      fg: "#a3a3a3",
-      attributes: TextAttributes.DIM,
-      wrapMode: "none",
-      truncate: true,
-      width: "100%",
-      minWidth: "100%",
-      maxWidth: "100%",
-    }),
-  );
+  const inputShell = new BoxRenderable(renderer, {
+    flexDirection: "column",
+    backgroundColor: "#141414",
+    paddingTop: 1,
+    paddingRight: 1,
+    paddingBottom: 1,
+    paddingLeft: 1,
+    marginBottom: 1,
+  });
 
   const input = new InputRenderable(renderer, {
     value: "",
@@ -40,17 +36,15 @@ export function createComposer(
     minWidth: "100%",
     maxWidth: "100%",
     overflow: "hidden",
-    paddingX: 1,
-    backgroundColor: "#0a0a0a",
+    paddingX: 0,
+    backgroundColor: "#141414",
     textColor: "#fafafa",
-    placeholderColor: "#737373",
+    placeholderColor: "#6b6b6b",
   });
 
   const suggestions = new BoxRenderable(renderer, {
     flexDirection: "column",
-    border: true,
-    borderColor: "#1f1f1f",
-    backgroundColor: "#090909",
+    backgroundColor: "#141414",
     paddingTop: 0,
     paddingRight: 1,
     paddingBottom: 0,
@@ -60,7 +54,8 @@ export function createComposer(
   });
 
   input.on("enter", onSubmit);
-  composer.add(input);
+  inputShell.add(input);
+  composer.add(inputShell);
   composer.add(suggestions);
 
   function updateSuggestions(items: CommandSuggestion[], selectedIndex: number) {
@@ -79,7 +74,7 @@ export function createComposer(
     items.forEach((item, index) => {
       const row = new BoxRenderable(renderer, {
         flexDirection: "column",
-        backgroundColor: index === selectedIndex ? "#161616" : "#090909",
+        backgroundColor: index === selectedIndex ? "#1b1b1b" : "#141414",
         paddingTop: 0,
         paddingRight: 0,
         paddingBottom: 0,

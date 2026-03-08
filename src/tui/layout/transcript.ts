@@ -11,34 +11,17 @@ export function createTranscriptPanel(renderer: CliRenderer) {
   const panel = new BoxRenderable(renderer, {
     flexDirection: "column",
     flexGrow: 1,
-    paddingTop: 1,
+    paddingTop: 0,
     paddingRight: 1,
     paddingBottom: 0,
     paddingLeft: 1,
-    gap: 1,
+    gap: 0,
     backgroundColor: "#0a0a0a",
   });
 
-  panel.add(
-    new TextRenderable(renderer, {
-      content: "Qarma",
-      fg: "#f97316",
-      attributes: TextAttributes.BOLD,
-    }),
-  );
-
-  panel.add(
-    new TextRenderable(renderer, {
-      content: "Local and cloud testing from one terminal workspace.",
-      fg: "#a3a3a3",
-      wrapMode: "word",
-    }),
-  );
-
   const transcript = new ScrollBoxRenderable(renderer, {
     flexGrow: 1,
-    border: true,
-    borderColor: "#141414",
+    border: false,
     paddingTop: 1,
     paddingRight: 1,
     paddingBottom: 1,
@@ -52,7 +35,7 @@ export function createTranscriptPanel(renderer: CliRenderer) {
     },
     contentOptions: {
       flexDirection: "column",
-      gap: 0,
+      gap: 1,
       paddingRight: 1,
     },
   });
@@ -67,46 +50,49 @@ export function addTranscriptMessage(
   transcript: ScrollBoxRenderable,
   message: Message,
 ) {
-  const stepBorderColor =
-    message.stepStatus === "passed"
-      ? "#4ade80"
-      : message.stepStatus === "failed"
-        ? "#f87171"
-        : message.stepStatus === "running"
-          ? "#f97316"
-          : "#1f1f1f";
-
   const bubble = new BoxRenderable(renderer, {
     flexDirection: "column",
     backgroundColor:
-      message.variant === "step"
-        ? "#111111"
-        : message.variant === "system"
-        ? "#080808"
-        : "#0a0a0a",
-    border: message.variant === "step",
-    borderColor: message.variant === "step" ? stepBorderColor : undefined,
-    paddingTop: message.variant === "step" ? 1 : 0,
-    paddingRight: message.variant === "step" ? 1 : 0,
-    paddingBottom: 1,
-    paddingLeft: message.variant === "step" ? 1 : 0,
-    marginBottom: message.variant === "step" ? 1 : 0,
+      message.variant === "prompt"
+        ? "#0d0d0d"
+        : message.variant === "step"
+          ? "#0b0b0b"
+          : "#0a0a0a",
+    paddingTop: message.variant === "step" ? 0 : 0,
+    paddingRight: message.variant === "prompt" ? 1 : 0,
+    paddingBottom: 0,
+    paddingLeft: message.variant === "prompt" ? 1 : 0,
+    gap: message.variant === "step" ? 0 : 0,
+    alignSelf: "stretch",
+    maxWidth: "100%",
   });
 
-  bubble.add(
-    new TextRenderable(renderer, {
-      content: message.speaker.toUpperCase(),
-      fg: message.accent,
-      attributes:
-        message.variant === "step" ? TextAttributes.BOLD : TextAttributes.DIM,
-      selectable: true,
-      selectionBg: "#f97316",
-      selectionFg: "#050505",
-    }),
-  );
-
   if (message.variant === "step") {
-    bubble.add(
+    const row = new BoxRenderable(renderer, {
+      flexDirection: "row",
+      gap: 1,
+    });
+
+    const rail = new BoxRenderable(renderer, {
+      width: 1,
+      minWidth: 1,
+      maxWidth: 1,
+      backgroundColor:
+        message.stepStatus === "passed"
+          ? "#4ade80"
+          : message.stepStatus === "failed"
+            ? "#f87171"
+            : message.stepStatus === "running"
+              ? "#f97316"
+              : "#1f1f1f",
+    });
+
+    const marker = new BoxRenderable(renderer, {
+      flexDirection: "column",
+      flexGrow: 1,
+    });
+
+    marker.add(
       new TextRenderable(renderer, {
         content: message.content,
         fg: "#f5f5f5",
@@ -114,15 +100,14 @@ export function addTranscriptMessage(
         selectable: true,
         selectionBg: "#f97316",
         selectionFg: "#050505",
-        attributes: TextAttributes.BOLD,
       }),
     );
 
     for (const detailLine of message.detailLines || []) {
-      bubble.add(
+      marker.add(
         new TextRenderable(renderer, {
           content: detailLine,
-          fg: "#bfbfbf",
+          fg: "#8a8a8a",
           wrapMode: "word",
           selectable: true,
           selectionBg: "#f97316",
@@ -131,15 +116,20 @@ export function addTranscriptMessage(
         }),
       );
     }
+
+    row.add(rail);
+    row.add(marker);
+    bubble.add(row);
   } else {
     bubble.add(
       new TextRenderable(renderer, {
         content: message.content,
-        fg: "#f5f5f5",
+        fg: message.variant === "system" ? "#8a8a8a" : "#f5f5f5",
         wrapMode: "word",
         selectable: true,
         selectionBg: "#f97316",
         selectionFg: "#050505",
+        attributes: message.variant === "system" ? TextAttributes.DIM : TextAttributes.NONE,
       }),
     );
   }

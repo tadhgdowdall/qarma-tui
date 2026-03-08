@@ -19,19 +19,8 @@ export const sampleSessions: SessionSummary[] = [
 export const sampleMessages: Message[] = [
   {
     speaker: "Qarma",
-    accent: "#f97316",
-    content:
-      "Ready. I can run natural language browser tests locally or against a live URL.",
-  },
-  {
-    speaker: "System",
-    accent: "#a3a3a3",
-    content: "Mode is local. Target is localhost:3000. Provider is OpenAI.",
-  },
-  {
-    speaker: "Hint",
     accent: "#737373",
-    content:
-      "Keep prompts short and outcome-focused. Example: verify a user can sign in and reach the dashboard.",
+    content: "Ready for a local browser run.",
+    variant: "system",
   },
 ];

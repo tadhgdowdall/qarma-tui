@@ -33,9 +33,9 @@ export function createStatusBar(renderer: CliRenderer, settings: RunSettings) {
   const statusbar = new BoxRenderable(renderer, {
     flexDirection: "row",
     justifyContent: "space-between",
-    border: true,
-    borderColor: "#141414",
-    backgroundColor: "#050505",
+    backgroundColor: "#0a0a0a",
+    paddingTop: 0,
+    paddingBottom: 0,
     paddingLeft: 1,
     paddingRight: 1,
   });
@@ -54,8 +54,8 @@ export function createStatusBar(renderer: CliRenderer, settings: RunSettings) {
 
   statusbar.add(
     new TextRenderable(renderer, {
-      content: "type /help for commands",
-      fg: "#f97316",
+      content: "/help",
+      fg: "#737373",
       attributes: TextAttributes.DIM,
     }),
   );

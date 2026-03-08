@@ -123,11 +123,15 @@ export function shouldAcceptSuggestion(value: string, suggestion: CommandSuggest
   const normalizedCommand = rawCommand || "";
   const hasArgument = rest.join(" ").trim().length > 0;
 
+  if (normalizedCommand.length === 0) {
+    return true;
+  }
+
   if (normalizedCommand !== suggestion.command) {
     return suggestion.command.startsWith(normalizedCommand);
   }
 
-  return suggestion.requiresArgument === true && !hasArgument;
+  return suggestion.requiresArgument !== true && !hasArgument;
 }
 
 export async function applySettingsCommand(

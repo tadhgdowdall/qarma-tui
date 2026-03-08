@@ -81,7 +81,7 @@ export function createLandingView(
 
   panel.add(
     new TextRenderable(renderer, {
-      content: "paste supported  enter to start  type /help after launch",
+      content: "enter to start",
       fg: "#737373",
       attributes: TextAttributes.DIM,
     }),
