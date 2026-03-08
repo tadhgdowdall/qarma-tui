@@ -65,9 +65,6 @@ export function createLandingView(
   const input = new InputRenderable(renderer, {
     value: "",
     placeholder: "Verify sign in reaches the dashboard...",
-    border: true,
-    borderColor: "#262626",
-    focusedBorderColor: "#f97316",
     paddingX: 1,
     backgroundColor: "#050505",
     textColor: "#fafafa",

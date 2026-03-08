@@ -26,9 +26,6 @@ export function createComposer(
   const input = new InputRenderable(renderer, {
     value: "",
     placeholder: "Verify sign in reaches the dashboard...",
-    border: true,
-    borderColor: "#262626",
-    focusedBorderColor: "#f97316",
     paddingX: 1,
     backgroundColor: "#0a0a0a",
     textColor: "#fafafa",

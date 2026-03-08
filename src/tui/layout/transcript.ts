@@ -55,9 +55,6 @@ export function createTranscriptPanel(renderer: CliRenderer) {
       gap: 0,
       paddingRight: 1,
     },
-    verticalScrollbarOptions: {
-      borderColor: "#2a2a2a",
-    },
   });
 
   panel.add(transcript);

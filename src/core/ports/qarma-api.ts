@@ -1,8 +1,13 @@
-import type { Test } from "../models/test";
-import type { TestRun } from "../models/test-run";
+import type {
+  RunRequest,
+  TargetProfile,
+  TestDefinition,
+  TestRun,
+} from "../models/run";
 
 export interface QarmaApi {
-  listTests(workspaceId: string): Promise<Test[]>;
-  runSavedTest(testId: string): Promise<{ runId: string }>;
+  listTests(workspaceId: string): Promise<TestDefinition[]>;
+  listTargetProfiles(workspaceId: string): Promise<TargetProfile[]>;
+  createRun(request: RunRequest): Promise<{ runId: string }>;
   subscribeToRun(runId: string, onUpdate: (run: TestRun) => void): () => void;
 }
