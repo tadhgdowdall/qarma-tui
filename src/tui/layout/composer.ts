@@ -17,7 +17,7 @@ export function createComposer(
 
   composer.add(
     new TextRenderable(renderer, {
-      content: "Describe the flow to verify, or paste a single-line error.",
+      content: "Describe the flow to verify, or use /settings, /target, /openai-key.",
       fg: "#a3a3a3",
       attributes: TextAttributes.DIM,
     }),

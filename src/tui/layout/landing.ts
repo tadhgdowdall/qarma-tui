@@ -77,7 +77,7 @@ export function createLandingView(
 
   panel.add(
     new TextRenderable(renderer, {
-      content: "paste supported  enter to start  q quit",
+      content: "paste supported  /target and /openai-key available after launch  q quit",
       fg: "#737373",
       attributes: TextAttributes.DIM,
     }),

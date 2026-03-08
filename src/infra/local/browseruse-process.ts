@@ -25,23 +25,42 @@ type StreamMessage =
   | {
       type: "step";
       step?: number;
+      title?: string;
       description?: string;
       status?: string;
       url?: string;
+      action?: string;
+      observation?: string;
     }
   | {
       type: "result";
       status?: "passed" | "failed";
       result?: string;
       error?: string;
-      steps?: Array<{ number?: number; description?: string; status?: string; url?: string }>;
+      steps?: Array<{
+        number?: number;
+        title?: string;
+        description?: string;
+        status?: string;
+        url?: string;
+        action?: string;
+        observation?: string;
+      }>;
     };
 
 const agentRunnerPath = fileURLToPath(new URL("./python/agent_runner.py", import.meta.url));
 const pythonModuleDir = dirname(agentRunnerPath);
 
 function toRunStep(
-  step: { number?: number; description?: string; status?: string; url?: string },
+  step: {
+    number?: number;
+    title?: string;
+    description?: string;
+    status?: string;
+    url?: string;
+    action?: string;
+    observation?: string;
+  },
   fallbackNumber: number,
 ): TestRunStep {
   const status =
@@ -51,9 +70,11 @@ function toRunStep(
 
   return {
     step: step.number || fallbackNumber,
-    title: step.description || "Browser-Use step",
+    title: step.title || step.description || "Browser-Use step",
     status,
     url: step.url,
+    action: step.action,
+    observation: step.observation,
     timestamp: new Date().toISOString(),
   };
 }
@@ -131,9 +152,12 @@ export async function runBrowserUseLocally(
           const step = toRunStep(
             {
               number: message.step,
+              title: message.title,
               description: message.description,
               status: message.status,
               url: message.url,
+              action: message.action,
+              observation: message.observation,
             },
             steps.length + 1,
           );

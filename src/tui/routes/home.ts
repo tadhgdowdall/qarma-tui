@@ -13,7 +13,6 @@ import { sampleMessages, sampleSessions } from "../state/mock-data";
 import { buildRunRequest, defaultRunSettings, formatRunSettings } from "../state/run-settings";
 import type { Message } from "../../shared/types";
 import { copyTextToClipboard } from "../../infra/local/clipboard";
-import { getEnvDiagnostic } from "../../infra/storage/env-diagnostics";
 
 export function mountHomeRoute(renderer: CliRenderer) {
   const runSettings = { ...defaultRunSettings };
@@ -73,10 +72,16 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function appendStepMessage(step: TestRunStep) {
+    const details = [
+      step.action ? `action ${step.action}` : null,
+      step.observation ? `note ${step.observation}` : null,
+      step.url ? `url ${step.url}` : null,
+    ].filter(Boolean);
+
     const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
-      content: `${step.title}${step.observation ? ` — ${step.observation}` : ""}`,
+      content: details.length ? `${step.title} — ${details.join(" | ")}` : step.title,
     } as const;
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
@@ -155,10 +160,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
     runInFlight = true;
 
     appendSystemMessage(`Starting ${formatRunSettings(runSettings)} run.`);
-    const openAiEnv = getEnvDiagnostic("OPENAI_API_KEY");
+    const openAiKeySource = await services.secrets.source("openai_api_key");
     appendSystemMessage(
-      `Preflight env ${openAiEnv.envName}: ${openAiEnv.available ? "available" : "missing"}.`,
-      openAiEnv.available ? "#4ade80" : "#f87171",
+      `Preflight OpenAI key source: ${openAiKeySource}.`,
+      openAiKeySource === "missing" ? "#f87171" : "#4ade80",
     );
 
     try {
@@ -195,13 +200,13 @@ export function mountHomeRoute(renderer: CliRenderer) {
     landingInput.value = "";
   }
 
-  function handleWorkspaceSubmit(value: string) {
+  async function handleWorkspaceSubmit(value: string) {
     const trimmed = value.trim();
     if (!trimmed) {
       return;
     }
 
-    const commandResult = applySettingsCommand(trimmed, runSettings);
+    const commandResult = await applySettingsCommand(trimmed, runSettings, services.secrets);
     if (commandResult.kind === "message") {
       appendSystemMessage(commandResult.content, commandResult.accent);
       syncStatusbar();

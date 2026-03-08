@@ -22,7 +22,7 @@ export function createStatusBar(renderer: CliRenderer, settings: RunSettings) {
 
   statusbar.add(
     new TextRenderable(renderer, {
-      content: "drag select  ctrl+y copy  /settings  tab sidebar  q quit",
+      content: "drag select  ctrl+y copy  /settings /target /openai-key  q quit",
       fg: "#f97316",
       attributes: TextAttributes.DIM,
     }),
