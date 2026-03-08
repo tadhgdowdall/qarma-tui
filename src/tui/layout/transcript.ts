@@ -69,18 +69,27 @@ export function addTranscriptMessage(
 ) {
   const bubble = new BoxRenderable(renderer, {
     flexDirection: "column",
-    backgroundColor: "#0a0a0a",
-    paddingTop: 0,
-    paddingRight: 0,
+    backgroundColor:
+      message.variant === "step"
+        ? "#111111"
+        : message.variant === "system"
+          ? "#080808"
+          : "#0a0a0a",
+    border: message.variant === "step",
+    borderColor: message.variant === "step" ? "#1f1f1f" : undefined,
+    paddingTop: message.variant === "step" ? 1 : 0,
+    paddingRight: message.variant === "step" ? 1 : 0,
     paddingBottom: 1,
-    paddingLeft: 0,
+    paddingLeft: message.variant === "step" ? 1 : 0,
+    marginBottom: message.variant === "step" ? 1 : 0,
   });
 
   bubble.add(
     new TextRenderable(renderer, {
       content: message.speaker.toUpperCase(),
       fg: message.accent,
-      attributes: TextAttributes.DIM,
+      attributes:
+        message.variant === "step" ? TextAttributes.BOLD : TextAttributes.DIM,
       selectable: true,
       selectionBg: "#f97316",
       selectionFg: "#050505",

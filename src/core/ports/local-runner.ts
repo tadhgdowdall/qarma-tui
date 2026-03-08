@@ -5,4 +5,5 @@ export interface LocalRunner {
     request: RunRequest,
     onStep?: (step: TestRunStep) => void,
   ): Promise<TestRun>;
+  cancelCurrentRun(): Promise<boolean>;
 }

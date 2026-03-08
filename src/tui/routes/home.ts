@@ -32,6 +32,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let workspaceActive = false;
   let transcriptSeeded = false;
   let runInFlight = false;
+  let lastSubmittedPrompt = "";
   const transcriptMessages: Message[] = [];
 
   function seedTranscript() {
@@ -66,6 +67,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       speaker: "Operator",
       accent: "#f8fafc",
       content: trimmed,
+      variant: "prompt",
     } as const;
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
@@ -83,6 +85,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       ]
         .filter(Boolean)
         .join("\n"),
+      variant: "step",
     } as const;
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
@@ -98,6 +101,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       speaker: "System",
       accent: run.status === "passed" ? "#4ade80" : "#f87171",
       content: summary,
+      variant: "system",
     } as const;
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
@@ -108,6 +112,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       speaker: "System",
       accent,
       content,
+      variant: "system",
     } as const;
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
@@ -157,6 +162,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    lastSubmittedPrompt = trimmed;
     appendPromptExchange(trimmed);
     runInFlight = true;
 
@@ -204,6 +210,45 @@ export function mountHomeRoute(renderer: CliRenderer) {
   async function handleWorkspaceSubmit(value: string) {
     const trimmed = value.trim();
     if (!trimmed) {
+      return;
+    }
+
+    if (trimmed === "/clear") {
+      transcriptMessages.length = 0;
+      for (const child of transcript.getChildren()) {
+        transcript.remove(child.id);
+      }
+      input.value = "";
+      input.focus();
+      renderer.root.requestRender();
+      return;
+    }
+
+    if (trimmed === "/rerun") {
+      if (!lastSubmittedPrompt) {
+        appendSystemMessage("No previous prompt to rerun.", "#f87171");
+      } else if (runInFlight) {
+        appendSystemMessage("A run is already in progress.", "#f87171");
+      } else {
+        void submitRun(lastSubmittedPrompt);
+      }
+      input.value = "";
+      input.focus();
+      return;
+    }
+
+    if (trimmed === "/cancel") {
+      if (!runInFlight) {
+        appendSystemMessage("No run is currently in progress.", "#f87171");
+      } else {
+        const cancelled = await services.localRunner.cancelCurrentRun();
+        appendSystemMessage(
+          cancelled ? "Cancelling current run..." : "No active local process to cancel.",
+          cancelled ? "#f97316" : "#f87171",
+        );
+      }
+      input.value = "";
+      input.focus();
       return;
     }
 

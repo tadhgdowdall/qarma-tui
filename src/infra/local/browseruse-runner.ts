@@ -14,6 +14,8 @@ type BrowserUseRunnerDependencies = {
 export function createBrowserUseRunner(
   dependencies: BrowserUseRunnerDependencies,
 ): LocalRunner {
+  let cancelActiveRun: (() => void) | null = null;
+
   return {
     async startRun(request, onStep) {
       const startedAt = new Date().toISOString();
@@ -75,7 +77,7 @@ export function createBrowserUseRunner(
       run.steps.push(authStep);
       onStep?.(authStep);
 
-      const processResult = await runBrowserUseLocally({
+      const processHandle = runBrowserUseLocally({
         prompt: run.promptSnapshot,
         targetUrl: run.targetUrl,
         timeoutSeconds: request.runConfig.timeoutSeconds,
@@ -87,6 +89,9 @@ export function createBrowserUseRunner(
           onStep?.(step);
         },
       });
+      cancelActiveRun = processHandle.cancel;
+      const processResult = await processHandle.result;
+      cancelActiveRun = null;
 
       run.status = processResult.status;
       run.result = processResult.result;
@@ -95,6 +100,14 @@ export function createBrowserUseRunner(
       run.durationMs = new Date(run.completedAt).getTime() - new Date(startedAt).getTime();
 
       return run;
+    },
+    async cancelCurrentRun() {
+      if (!cancelActiveRun) {
+        return false;
+      }
+
+      cancelActiveRun();
+      return true;
     },
   };
 }

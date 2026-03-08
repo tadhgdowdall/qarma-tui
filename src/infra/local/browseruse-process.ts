@@ -15,10 +15,15 @@ type BrowserUseProcessInput = {
 };
 
 type BrowserUseProcessResult = {
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "cancelled";
   result: string;
   errorMessage?: string;
   steps: TestRunStep[];
+};
+
+type BrowserUseProcessHandle = {
+  result: Promise<BrowserUseProcessResult>;
+  cancel: () => void;
 };
 
 type StreamMessage =
@@ -79,9 +84,9 @@ function toRunStep(
   };
 }
 
-export async function runBrowserUseLocally(
+export function runBrowserUseLocally(
   input: BrowserUseProcessInput,
-): Promise<BrowserUseProcessResult> {
+): BrowserUseProcessHandle {
   if (input.access.mode === "user_api_key" && input.access.provider !== "openai") {
     throw new Error(`Direct local provider "${input.access.provider}" is not wired yet.`);
   }
@@ -134,6 +139,7 @@ export async function runBrowserUseLocally(
   let stdoutBuffer = "";
   let stderr = "";
   let finalResult: BrowserUseProcessResult | null = null;
+  let cancelled = false;
 
   proc.stdout.on("data", (chunk: Buffer) => {
     stdoutBuffer += chunk.toString();
@@ -184,12 +190,27 @@ export async function runBrowserUseLocally(
     stderr += chunk.toString();
   });
 
-  return new Promise((resolve, reject) => {
+  return {
+    cancel() {
+      cancelled = true;
+      proc.kill("SIGTERM");
+    },
+    result: new Promise((resolve, reject) => {
     proc.on("error", (error) => {
       reject(error);
     });
 
     proc.on("close", (code) => {
+      if (cancelled) {
+        resolve({
+          status: "cancelled",
+          result: "Run cancelled.",
+          errorMessage: undefined,
+          steps,
+        });
+        return;
+      }
+
       if (finalResult) {
         resolve(finalResult);
         return;
@@ -202,5 +223,6 @@ export async function runBrowserUseLocally(
         steps,
       });
     });
-  });
+    }),
+  };
 }
