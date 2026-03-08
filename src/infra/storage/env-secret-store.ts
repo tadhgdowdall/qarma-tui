@@ -1,18 +1,21 @@
 import type { SecretStore } from "../../core/ports/secret-store";
+import { SECRET_ENV_MAP } from "../../shared/constants";
 
-const envSecretMap: Record<string, string> = {
-  openai_api_key: "OPENAI_API_KEY",
-  qarma_access_token: "QARMA_ACCESS_TOKEN",
-};
+export function getExpectedEnvName(secretRef: string) {
+  return SECRET_ENV_MAP[secretRef] || null;
+}
 
 export const envSecretStore: SecretStore = {
   async get(secretRef) {
-    const envName = envSecretMap[secretRef];
+    const envName = getExpectedEnvName(secretRef);
     if (!envName) {
       return null;
     }
 
-    const value = process.env[envName];
+    const value =
+      process.env[envName] ||
+      (typeof Bun !== "undefined" && Bun.env ? Bun.env[envName] : undefined);
+
     return value && value.trim() ? value.trim() : null;
   },
 };

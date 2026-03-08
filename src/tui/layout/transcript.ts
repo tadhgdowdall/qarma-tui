@@ -81,6 +81,9 @@ export function addTranscriptMessage(
       content: message.speaker.toUpperCase(),
       fg: message.accent,
       attributes: TextAttributes.DIM,
+      selectable: true,
+      selectionBg: "#f97316",
+      selectionFg: "#050505",
     }),
   );
 
@@ -89,6 +92,9 @@ export function addTranscriptMessage(
       content: message.content,
       fg: "#f5f5f5",
       wrapMode: "word",
+      selectable: true,
+      selectionBg: "#f97316",
+      selectionFg: "#050505",
     }),
   );
 

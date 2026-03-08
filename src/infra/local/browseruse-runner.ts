@@ -3,8 +3,8 @@ import type { TestRun } from "../../core/models/run";
 import type { LocalRunner } from "../../core/ports/local-runner";
 import type { ProviderProfileStore } from "../../core/ports/provider-profile-store";
 import type { SecretStore } from "../../core/ports/secret-store";
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { validateBrowserUsePreflight } from "./browseruse-preflight";
+import { runBrowserUseLocally } from "./browseruse-process";
 
 type BrowserUseRunnerDependencies = {
   providerProfiles: ProviderProfileStore;
@@ -38,6 +38,8 @@ export function createBrowserUseRunner(
         startedAt,
       };
 
+      validateBrowserUsePreflight();
+
       const { profile, access } = await resolveModelAccess(
         {
           profileId: request.runConfig.providerProfileId,
@@ -58,8 +60,6 @@ export function createBrowserUseRunner(
       run.steps.push(queuedStep);
       onStep?.(queuedStep);
 
-      await sleep(120);
-
       const authStep = {
         step: 2,
         title: "Resolve model access",
@@ -75,34 +75,22 @@ export function createBrowserUseRunner(
       run.steps.push(authStep);
       onStep?.(authStep);
 
-      await sleep(120);
+      const processResult = await runBrowserUseLocally({
+        prompt: run.promptSnapshot,
+        targetUrl: run.targetUrl,
+        timeoutSeconds: request.runConfig.timeoutSeconds,
+        headless: request.runConfig.headless ?? false,
+        modelId: request.runConfig.modelId || profile.modelId,
+        access,
+        onStep: (step) => {
+          run.steps.push(step);
+          onStep?.(step);
+        },
+      });
 
-      const navigateStep = {
-        step: 3,
-        title: "Navigate to target",
-        status: "running",
-        url: run.targetUrl,
-        observation: "Launching the browser and loading the target URL.",
-        timestamp: new Date().toISOString(),
-      } as const;
-      run.steps.push(navigateStep);
-      onStep?.(navigateStep);
-
-      await sleep(180);
-
-      const assertionStep = {
-        step: 4,
-        title: "Evaluate prompt",
-        status: "passed",
-        observation:
-          "Local execution path is now resolving provider access securely. Real Browser-Use process wiring is the next step.",
-        timestamp: new Date().toISOString(),
-      } as const;
-      run.steps.push(assertionStep);
-      onStep?.(assertionStep);
-
-      run.status = "passed";
-      run.result = "Local stub completed.";
+      run.status = processResult.status;
+      run.result = processResult.result;
+      run.errorMessage = processResult.errorMessage;
       run.completedAt = new Date().toISOString();
       run.durationMs = new Date(run.completedAt).getTime() - new Date(startedAt).getTime();
 

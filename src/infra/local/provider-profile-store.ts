@@ -7,7 +7,7 @@ const localProfiles: ProviderProfile[] = [
     label: "OpenAI (local key)",
     provider: "openai",
     modelSource: "user_api_key",
-    modelId: "gpt-4.1",
+    modelId: "gpt-5-nano",
     secretRef: "openai_api_key",
     defaultForLocalRuns: true,
   },
@@ -17,14 +17,7 @@ const localProfiles: ProviderProfile[] = [
     provider: "browser_use_cloud",
     modelSource: "qarma_managed",
     secretRef: "qarma_access_token",
-  },
-  {
-    id: "ollama-local",
-    label: "Ollama",
-    provider: "ollama",
-    modelSource: "local_model",
-    modelId: "llama3.1",
-    baseUrl: "http://127.0.0.1:11434",
+    baseUrl: process.env.QARMA_API_URL,
   },
 ];
 

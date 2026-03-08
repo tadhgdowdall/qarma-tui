@@ -1,6 +1,7 @@
 import type { ProviderProfile, ResolvedModelAccess } from "../models/provider";
 import type { ProviderProfileStore } from "../ports/provider-profile-store";
 import type { SecretStore } from "../ports/secret-store";
+import { SECRET_ENV_MAP } from "../../shared/constants";
 
 type ResolveModelAccessInput = {
   profileId?: string;
@@ -24,15 +25,7 @@ export async function resolveModelAccess(
   }
 
   if (profile.modelSource === "local_model") {
-    return {
-      profile,
-      access: {
-        mode: "local_model",
-        provider: profile.provider,
-        modelId: profile.modelId,
-        baseUrl: profile.baseUrl,
-      },
-    };
+    throw new Error("Local model execution is not enabled.");
   }
 
   if (!profile.secretRef) {
@@ -41,7 +34,12 @@ export async function resolveModelAccess(
 
   const secret = await dependencies.secrets.get(profile.secretRef);
   if (!secret) {
-    throw new Error(`Missing secret for provider profile "${profile.label}".`);
+    const envName = SECRET_ENV_MAP[profile.secretRef];
+    throw new Error(
+      envName
+        ? `Missing secret for provider profile "${profile.label}". Expected env var ${envName}.`
+        : `Missing secret for provider profile "${profile.label}".`,
+    );
   }
 
   if (profile.modelSource === "qarma_managed") {

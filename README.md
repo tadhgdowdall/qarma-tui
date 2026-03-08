@@ -12,12 +12,13 @@ Current state:
 - landing screen plus workspace view
 - OpenTUI-based layout primitives
 - architecture scaffold for local and cloud execution
+- internal local Browser-Use process bridge for BYO OpenAI or Qarma-managed inference
 
 Not implemented yet:
 
 - real QarmaV2 integration
-- real local Browser-Use execution
-- real provider configuration and secrets management
+- polished provider configuration and secrets management UI
+- real cloud execution integration
 
 ## Goals
 
@@ -34,11 +35,18 @@ Qarma TUI should eventually support:
 
 - Bun
 - a terminal with decent ANSI support
+- Python 3 for local Browser-Use runs
 
 ### Install
 
 ```bash
 bun install
+```
+
+For local Browser-Use runs, install the Python dependencies:
+
+```bash
+python3 -m pip install -r src/infra/local/python/requirements.txt
 ```
 
 ### Run
@@ -54,6 +62,17 @@ bun dev
 ```
 
 Quit with `q`, `Esc`, or `Ctrl+C`.
+
+## Local Execution
+
+Local runs are executed on the user's machine. For the BYO OpenAI path, the browser and Browser-Use agent both run locally and call the provider API directly from the local process.
+
+Current local provider inputs:
+
+- `OPENAI_API_KEY` for `openai-local`
+- `QARMA_ACCESS_TOKEN` and `QARMA_API_URL` for `qarma-managed`
+
+No secrets are checked into the repo or stored in run state.
 
 ## Project Structure
 

@@ -17,7 +17,7 @@ export function createComposer(
 
   composer.add(
     new TextRenderable(renderer, {
-      content: "Describe the flow to verify.",
+      content: "Describe the flow to verify, or paste a single-line error.",
       fg: "#a3a3a3",
       attributes: TextAttributes.DIM,
     }),
@@ -26,6 +26,7 @@ export function createComposer(
   const input = new InputRenderable(renderer, {
     value: "",
     placeholder: "Verify sign in reaches the dashboard...",
+    maxLength: 4000,
     paddingX: 1,
     backgroundColor: "#0a0a0a",
     textColor: "#fafafa",

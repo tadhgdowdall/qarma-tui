@@ -1,7 +1,8 @@
 import type { CliRenderer } from "@opentui/core";
 import { BoxRenderable, TextAttributes, TextRenderable } from "@opentui/core";
+import type { RunSettings } from "../state/run-settings";
 
-export function createStatusBar(renderer: CliRenderer) {
+export function createStatusBar(renderer: CliRenderer, settings: RunSettings) {
   const statusbar = new BoxRenderable(renderer, {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -12,21 +13,25 @@ export function createStatusBar(renderer: CliRenderer) {
     paddingRight: 1,
   });
 
-  statusbar.add(
-    new TextRenderable(renderer, {
-      content: "local  localhost:3000  openai",
-      fg: "#a3a3a3",
-      attributes: TextAttributes.DIM,
-    }),
-  );
+  const summary = new TextRenderable(renderer, {
+    content: `${settings.executionMode}  ${settings.targetUrl.replace(/^https?:\/\//, "")}  ${settings.providerProfileId === "qarma-managed" ? "qarma" : "openai"}  ${settings.modelId || "provider-default"}`,
+    fg: "#a3a3a3",
+    attributes: TextAttributes.DIM,
+  });
+  statusbar.add(summary);
 
   statusbar.add(
     new TextRenderable(renderer, {
-      content: "tab sidebar  q quit  / command  enter run",
+      content: "drag select  ctrl+y copy  /settings  tab sidebar  q quit",
       fg: "#f97316",
       attributes: TextAttributes.DIM,
     }),
   );
 
-  return statusbar;
+  return {
+    statusbar,
+    update(nextSettings: RunSettings) {
+      summary.content = `${nextSettings.executionMode}  ${nextSettings.targetUrl.replace(/^https?:\/\//, "")}  ${nextSettings.providerProfileId === "qarma-managed" ? "qarma" : "openai"}  ${nextSettings.modelId || "provider-default"}`;
+    },
+  };
 }

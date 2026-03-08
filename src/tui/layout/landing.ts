@@ -65,6 +65,7 @@ export function createLandingView(
   const input = new InputRenderable(renderer, {
     value: "",
     placeholder: "Verify sign in reaches the dashboard...",
+    maxLength: 4000,
     paddingX: 1,
     backgroundColor: "#050505",
     textColor: "#fafafa",
@@ -76,7 +77,7 @@ export function createLandingView(
 
   panel.add(
     new TextRenderable(renderer, {
-      content: "enter to start  q quit",
+      content: "paste supported  enter to start  q quit",
       fg: "#737373",
       attributes: TextAttributes.DIM,
     }),

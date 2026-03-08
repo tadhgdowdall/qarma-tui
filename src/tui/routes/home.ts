@@ -8,9 +8,15 @@ import { createSidebar } from "../layout/sidebar";
 import { createTranscriptPanel, addTranscriptMessage } from "../layout/transcript";
 import { createComposer } from "../layout/composer";
 import { createStatusBar } from "../layout/statusbar";
+import { applySettingsCommand } from "../commands/settings";
 import { sampleMessages, sampleSessions } from "../state/mock-data";
+import { buildRunRequest, defaultRunSettings, formatRunSettings } from "../state/run-settings";
+import type { Message } from "../../shared/types";
+import { copyTextToClipboard } from "../../infra/local/clipboard";
+import { getEnvDiagnostic } from "../../infra/storage/env-diagnostics";
 
 export function mountHomeRoute(renderer: CliRenderer) {
+  const runSettings = { ...defaultRunSettings };
   const { view: landingView, input: landingInput } = createLandingView(
     renderer,
     handleInitialSubmit,
@@ -19,7 +25,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   const sidebar = createSidebar(renderer, sampleSessions);
   const { panel: transcriptPanel, transcript } = createTranscriptPanel(renderer);
   const { composer, input } = createComposer(renderer, handleWorkspaceSubmit);
-  const statusbar = createStatusBar(renderer);
+  const statusbar = createStatusBar(renderer, runSettings);
 
   let sidebarOpen = false;
   let sidebarWidth = 0;
@@ -27,6 +33,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let workspaceActive = false;
   let transcriptSeeded = false;
   let runInFlight = false;
+  const transcriptMessages: Message[] = [];
 
   function seedTranscript() {
     if (transcriptSeeded) {
@@ -34,6 +41,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     }
 
     for (const message of sampleMessages) {
+      transcriptMessages.push(message);
       addTranscriptMessage(renderer, transcript, message);
     }
 
@@ -55,19 +63,23 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function appendPromptExchange(trimmed: string) {
-    addTranscriptMessage(renderer, transcript, {
+    const message = {
       speaker: "Operator",
       accent: "#f8fafc",
       content: trimmed,
-    });
+    } as const;
+    transcriptMessages.push(message);
+    addTranscriptMessage(renderer, transcript, message);
   }
 
   function appendStepMessage(step: TestRunStep) {
-    addTranscriptMessage(renderer, transcript, {
+    const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
       content: `${step.title}${step.observation ? ` — ${step.observation}` : ""}`,
-    });
+    } as const;
+    transcriptMessages.push(message);
+    addTranscriptMessage(renderer, transcript, message);
   }
 
   function appendRunSummary(run: TestRun) {
@@ -76,30 +88,61 @@ export function mountHomeRoute(renderer: CliRenderer) {
         ? `Run passed on ${run.targetUrl} using ${run.executionMode} execution.`
         : `Run ${run.status} on ${run.targetUrl}${run.errorMessage ? `: ${run.errorMessage}` : "."}`;
 
-    addTranscriptMessage(renderer, transcript, {
+    const message = {
       speaker: "System",
       accent: run.status === "passed" ? "#4ade80" : "#f87171",
       content: summary,
-    });
+    } as const;
+    transcriptMessages.push(message);
+    addTranscriptMessage(renderer, transcript, message);
   }
 
-  function buildRunRequest(prompt: string): RunRequest {
-    return {
-      workspaceId: "demo-workspace",
-      prompt,
-      triggeredBy: "manual",
-      runConfig: {
-        executionMode: "local",
-        modelSource: "user_api_key",
-        modelProvider: "openai",
-        providerProfileId: "openai-local",
-        browser: "chromium",
-        headless: false,
-        timeoutSeconds: 60,
-        targetUrlOverride: "http://localhost:3000",
-        syncResultsToQarma: true,
-      },
-    };
+  function appendSystemMessage(content: string, accent = "#a3a3a3") {
+    const message = {
+      speaker: "System",
+      accent,
+      content,
+    } as const;
+    transcriptMessages.push(message);
+    addTranscriptMessage(renderer, transcript, message);
+  }
+
+  function syncStatusbar() {
+    statusbar.update(runSettings);
+    renderer.root.requestRender();
+  }
+
+  function copyLatestTranscriptMessage() {
+    const selectedText = renderer.getSelection()?.getSelectedText().trim();
+    if (selectedText) {
+      const copied = copyTextToClipboard(renderer, selectedText);
+
+      appendSystemMessage(
+        copied
+          ? "Copied selected transcript text to clipboard."
+          : "Clipboard copy is not supported by this terminal.",
+        copied ? "#4ade80" : "#f87171",
+      );
+      return;
+    }
+
+    const lastMessage = transcriptMessages[transcriptMessages.length - 1];
+    if (!lastMessage) {
+      appendSystemMessage("Nothing to copy yet.", "#a3a3a3");
+      return;
+    }
+
+    const copied = copyTextToClipboard(
+      renderer,
+      `${lastMessage.speaker}: ${lastMessage.content}`,
+    );
+
+    appendSystemMessage(
+      copied
+        ? "Copied latest transcript message to clipboard."
+        : "Clipboard copy is not supported by this terminal.",
+      copied ? "#4ade80" : "#f87171",
+    );
   }
 
   async function submitRun(value: string) {
@@ -111,15 +154,16 @@ export function mountHomeRoute(renderer: CliRenderer) {
     appendPromptExchange(trimmed);
     runInFlight = true;
 
-    addTranscriptMessage(renderer, transcript, {
-      speaker: "System",
-      accent: "#a3a3a3",
-      content: "Starting local run on http://localhost:3000 with OpenAI.",
-    });
+    appendSystemMessage(`Starting ${formatRunSettings(runSettings)} run.`);
+    const openAiEnv = getEnvDiagnostic("OPENAI_API_KEY");
+    appendSystemMessage(
+      `Preflight env ${openAiEnv.envName}: ${openAiEnv.available ? "available" : "missing"}.`,
+      openAiEnv.available ? "#4ade80" : "#f87171",
+    );
 
     try {
       const run = await startRun(
-        buildRunRequest(trimmed),
+        buildRunRequest(trimmed, runSettings),
         {
           localRunner: services.localRunner,
           qarmaApi: services.qarmaApi,
@@ -131,11 +175,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
       appendRunSummary(run);
     } catch (error) {
-      addTranscriptMessage(renderer, transcript, {
-        speaker: "System",
-        accent: "#f87171",
-        content: `Run failed to start: ${error instanceof Error ? error.message : String(error)}`,
-      });
+      appendSystemMessage(
+        `Run failed to start: ${error instanceof Error ? error.message : String(error)}`,
+        "#f87171",
+      );
     } finally {
       runInFlight = false;
     }
@@ -155,6 +198,15 @@ export function mountHomeRoute(renderer: CliRenderer) {
   function handleWorkspaceSubmit(value: string) {
     const trimmed = value.trim();
     if (!trimmed) {
+      return;
+    }
+
+    const commandResult = applySettingsCommand(trimmed, runSettings);
+    if (commandResult.kind === "message") {
+      appendSystemMessage(commandResult.content, commandResult.accent);
+      syncStatusbar();
+      input.value = "";
+      input.focus();
       return;
     }
 
@@ -215,13 +267,18 @@ export function mountHomeRoute(renderer: CliRenderer) {
     if (key.name === "tab") {
       sidebarOpen = !sidebarOpen;
       syncSidebar();
+      return;
+    }
+
+    if (key.ctrl && key.name === "y") {
+      copyLatestTranscriptMessage();
     }
   });
 
   shell.app.add(sidebar);
   shell.main.add(transcriptPanel);
   shell.main.add(composer);
-  shell.main.add(statusbar);
+  shell.main.add(statusbar.statusbar);
   shell.app.add(shell.main);
   shell.app.visible = false;
   sidebar.width = 0;
