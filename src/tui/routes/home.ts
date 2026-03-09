@@ -9,9 +9,9 @@ import { createTranscriptPanel, addTranscriptMessage } from "../layout/transcrip
 import { createComposer } from "../layout/composer";
 import { createStatusBar } from "../layout/statusbar";
 import { applySettingsCommand, getCommandSuggestions, shouldAcceptSuggestion } from "../commands/settings";
-import { sampleMessages, sampleSessions } from "../state/mock-data";
+import { sampleMessages } from "../state/mock-data";
 import { buildRunRequest, defaultRunSettings, formatRunSettings } from "../state/run-settings";
-import type { Message } from "../../shared/types";
+import type { Message, RecentRunSummary } from "../../shared/types";
 import { copyTextToClipboard } from "../../infra/local/clipboard";
 
 export function mountHomeRoute(renderer: CliRenderer) {
@@ -21,7 +21,9 @@ export function mountHomeRoute(renderer: CliRenderer) {
     handleInitialSubmit,
   );
   const shell = createShell(renderer);
-  const sidebar = createSidebar(renderer, sampleSessions);
+  const recentRuns: RecentRunSummary[] = [];
+  const sidebarState = createSidebar(renderer, recentRuns);
+  const sidebar = sidebarState.sidebar;
   const { panel: transcriptPanel, transcript } = createTranscriptPanel(renderer);
   const { composer, input, updateSuggestions, hideSuggestions } = createComposer(renderer, handleWorkspaceSubmit);
   const statusbar = createStatusBar(renderer, runSettings);
@@ -38,7 +40,54 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   let commandSelectionIndex = 0;
   let commandMenuOpen = false;
+  let sidebarSelectionIndex = 0;
   const transcriptMessages: Message[] = [];
+
+  function truncatePrompt(prompt: string) {
+    return prompt.replace(/\s+/g, " ").trim().slice(0, 44);
+  }
+
+  function formatRelativeTime(timestamp: number) {
+    const deltaSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+    if (deltaSeconds < 5) return "just now";
+    if (deltaSeconds < 60) return `${deltaSeconds}s ago`;
+    const minutes = Math.floor(deltaSeconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
+  }
+
+  function syncRecentRuns() {
+    recentRuns.forEach((run, index) => {
+      run.active = sidebarOpen && index === sidebarSelectionIndex;
+      run.subtitle = formatRelativeTime(Number(run.id.split("-").pop() || Date.now()));
+    });
+    sidebarState.update(recentRuns);
+  }
+
+  function addRecentRun(prompt: string) {
+    const timestamp = Date.now();
+    const entry: RecentRunSummary = {
+      id: `run-${timestamp}`,
+      prompt: truncatePrompt(prompt),
+      target: runSettings.targetUrl.replace(/^https?:\/\//, ""),
+      status: "running",
+      subtitle: "just now",
+      active: false,
+    };
+    recentRuns.unshift(entry);
+    if (recentRuns.length > 12) {
+      recentRuns.length = 12;
+    }
+    sidebarSelectionIndex = 0;
+    syncRecentRuns();
+    return entry;
+  }
+
+  function updateRecentRun(entry: RecentRunSummary, status: RecentRunSummary["status"]) {
+    entry.status = status;
+    syncRecentRuns();
+  }
 
   function stopElapsedTimer() {
     if (elapsedTimer) {
@@ -253,6 +302,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     }
 
     lastSubmittedPrompt = trimmed;
+    const recentRun = addRecentRun(trimmed);
     appendPromptExchange(trimmed);
     runInFlight = true;
     activeRunStatus = "running";
@@ -285,9 +335,11 @@ export function mountHomeRoute(renderer: CliRenderer) {
       );
 
       activeRunStatus = normalizeRunStatus(run.status);
+      updateRecentRun(recentRun, run.status === "queued" ? "running" : run.status);
       appendRunSummary(run);
     } catch (error) {
       activeRunStatus = "failed";
+      updateRecentRun(recentRun, "failed");
       appendSystemMessage(
         `Run failed to start: ${error instanceof Error ? error.message : String(error)}`,
         "#f87171",
@@ -434,6 +486,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
   const syncSidebar = () => {
     animateSidebar(sidebarOpen ? 24 : 0);
+    syncRecentRuns();
   };
 
   renderer.keyInput.on("keypress", (key) => {
@@ -449,6 +502,27 @@ export function mountHomeRoute(renderer: CliRenderer) {
     if (key.name === "tab") {
       sidebarOpen = !sidebarOpen;
       syncSidebar();
+      return;
+    }
+
+    if (sidebarOpen && !commandMenuOpen && key.name === "down" && recentRuns.length > 0) {
+      sidebarSelectionIndex = (sidebarSelectionIndex + 1) % recentRuns.length;
+      syncRecentRuns();
+      return;
+    }
+
+    if (sidebarOpen && !commandMenuOpen && key.name === "up" && recentRuns.length > 0) {
+      sidebarSelectionIndex = (sidebarSelectionIndex - 1 + recentRuns.length) % recentRuns.length;
+      syncRecentRuns();
+      return;
+    }
+
+    if (sidebarOpen && !commandMenuOpen && (key.name === "return" || key.name === "linefeed")) {
+      const selectedRun = recentRuns[sidebarSelectionIndex];
+      if (selectedRun && !runInFlight) {
+        void submitRun(selectedRun.prompt);
+        input.focus();
+      }
       return;
     }
 

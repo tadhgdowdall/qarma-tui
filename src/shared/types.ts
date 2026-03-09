@@ -12,3 +12,12 @@ export type SessionSummary = {
   preview: string;
   active?: boolean;
 };
+
+export type RecentRunSummary = {
+  id: string;
+  prompt: string;
+  target: string;
+  status: "running" | "passed" | "failed" | "cancelled";
+  subtitle: string;
+  active?: boolean;
+};
