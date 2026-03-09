@@ -1,5 +1,5 @@
 import type { CliRenderer } from "@opentui/core";
-import type { RunRequest, TestRun, TestRunStep } from "../../core/models/run";
+import type { RunFailureKind, RunRequest, TestRun, TestRunStep } from "../../core/models/run";
 import { startRun } from "../../core/usecases/start-run";
 import { createLandingView } from "../layout/landing";
 import { services } from "../context/services";
@@ -150,11 +150,11 @@ export function mountHomeRoute(renderer: CliRenderer) {
       .replace(/\s+/g, " ")
       .replace(/^Verify presence of /i, "Check ")
       .replace(/^Verify that /i, "Check ")
-      .replace(/^Click on /i, "Click ")
+      .replace(/^Click on /i, "Open ")
       .replace(/^No further actions required.*$/i, "Finish run")
       .replace(/^Prepare to report results.*$/i, "Finish run")
       .trim()
-      .slice(0, 96);
+      .slice(0, 78);
   }
 
   function compactStepLine(label: string, value: string) {
@@ -166,6 +166,47 @@ export function mountHomeRoute(renderer: CliRenderer) {
       .slice(0, 120);
 
     return compactValue ? `${label}  ${compactValue}` : null;
+  }
+
+  function summarizeFailure(run: TestRun) {
+    const detail = run.errorMessage || run.result || "The run did not complete.";
+    const normalizedDetail = detail.replace(/\s+/g, " ").trim();
+
+    const byKind: Record<RunFailureKind, string> = {
+      assertion: `Check failed: ${normalizedDetail}`,
+      timeout: normalizedDetail || "Run timed out.",
+      runtime: `Runtime error: ${normalizedDetail}`,
+      cancelled: "Run cancelled.",
+    };
+
+    if (run.failureKind) {
+      return byKind[run.failureKind];
+    }
+
+    return `Run failed: ${normalizedDetail}`;
+  }
+
+  function buildOverallSummary(run: TestRun, summary: string) {
+    const normalized = summary.replace(/\s+/g, " ").trim();
+
+    if (run.status === "passed") {
+      const withoutPrefix = normalized.replace(/^Verified:\s*/i, "");
+      return `The requested check passed. ${withoutPrefix}`;
+    }
+
+    if (run.status === "cancelled") {
+      return "The run was cancelled before the requested check completed.";
+    }
+
+    if (run.failureKind === "timeout") {
+      return "The requested check did not complete before the timeout was reached.";
+    }
+
+    if (run.failureKind === "runtime") {
+      return `The run failed due to a runtime issue. ${normalized}`;
+    }
+
+    return `The requested check failed. ${normalized}`;
   }
 
   function appendStepMessage(step: TestRunStep) {
@@ -206,12 +247,28 @@ export function mountHomeRoute(renderer: CliRenderer) {
     const summary =
       run.status === "passed"
         ? run.result || `Run passed on ${run.targetUrl}.`
-        : `Run ${run.status} on ${run.targetUrl}${run.errorMessage ? `: ${run.errorMessage}` : "."}`;
+        : run.status === "cancelled"
+          ? "Run cancelled."
+          : summarizeFailure(run);
+    const overallSummary = buildOverallSummary(run, summary);
+
+    const durationSeconds =
+      typeof run.durationMs === "number"
+        ? Math.max(1, Math.round(run.durationMs / 1000))
+        : null;
+
+    const detailLines = [
+      `result summary  ${overallSummary}`,
+      `status  ${run.status}`,
+      `target  ${run.targetUrl.replace(/^https?:\/\//, "")}`,
+      durationSeconds ? `duration  ${durationSeconds}s` : null,
+    ].filter((line): line is string => Boolean(line));
 
     const message = {
       speaker: "System",
       accent: run.status === "passed" ? "#4ade80" : "#f87171",
       content: summary,
+      detailLines,
       variant: "system",
     } as const;
     transcriptMessages.push(message);

@@ -37,6 +37,10 @@ def emit_agent_step(number, title, status="running", url=None, action=None, obse
     emit(payload)
 
 
+def normalize_text(value):
+    return " ".join(str(value or "").strip().split())
+
+
 def summarize_action(action):
     if action is None:
         return None
@@ -60,6 +64,95 @@ def summarize_action(action):
         return str(dumped)
     except Exception:
         return str(action)
+
+
+def compact_sentence(text, fallback, limit=120):
+    normalized = normalize_text(text)
+    if not normalized:
+        return fallback
+
+    first_sentence = re.split(r"(?<=[.!?])\s+", normalized, maxsplit=1)[0].strip()
+    compact = first_sentence or normalized
+    if len(compact) > limit:
+        compact = compact[: limit - 1].rstrip() + "…"
+    return compact
+
+
+def summarize_step_title(title, action_summary=None):
+    normalized = normalize_text(title)
+    lowered = normalized.lower()
+
+    if not normalized:
+        return "Running check"
+
+    if action_summary:
+        action_lower = action_summary.lower()
+        if action_lower.startswith("click("):
+            if "pricing" in lowered:
+                return "Open pricing page"
+            if "sign in" in lowered or "login" in lowered:
+                return "Open sign-in page"
+            if "waitlist" in lowered:
+                return "Open waitlist flow"
+            return "Open requested page"
+        if action_lower.startswith("find_text("):
+            quoted = re.search(r"(?:text=)([^,)]+)", action_summary)
+            if quoted:
+                term = quoted.group(1).strip().strip("'").strip('"')
+                return f"Check {term}"
+            return "Check page text"
+        if action_lower.startswith("evaluate("):
+            return "Run page check"
+        if action_lower.startswith("done("):
+            return "Finish verification"
+
+    normalized = re.sub(r"^verify (the presence of|presence of|that)\s+", "Check ", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^confirm (programmatically )?that\s+", "Confirm ", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^run an in-page check to confirm\s+", "Check ", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^click (on )?", "Open ", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^finish verification.*$", "Finish verification", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^no further actions required.*$", "Finish verification", normalized, flags=re.IGNORECASE)
+
+    return compact_sentence(normalized, "Running check", limit=78)
+
+
+def summarize_observation(observation):
+    if not observation:
+        return None
+
+    normalized = normalize_text(observation)
+    normalized = re.sub(r"^no previous explicit action to evaluate;\s*", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^status:\s*", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^verification step completed:\s*", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^pricing page loaded;\s*", "Pricing page loaded; ", normalized, flags=re.IGNORECASE)
+
+    return compact_sentence(normalized, "", limit=110) or None
+
+
+def classify_failure_kind(text):
+    lowered = normalize_text(text).lower()
+
+    if any(token in lowered for token in ["timeout", "timed out", "exceeded"]):
+        return "timeout"
+
+    if any(
+        token in lowered
+        for token in [
+            "not found",
+            "missing",
+            "not present",
+            "could not find",
+            "unable to verify",
+            "did not",
+            "expected",
+            "remained on",
+            "assert",
+            "failed as expected",
+        ]
+    ):
+        return "assertion"
+
+    return "runtime"
 
 
 def is_simple_verification(task: str) -> bool:
@@ -112,7 +205,7 @@ Rules:
 - Do not guess alternative URLs or hidden paths.
 """
 
-        return f"""You are a QA testing agent. Verify whether the following criteria pass or fail.
+    return f"""You are a QA testing agent. Verify whether the following criteria pass or fail.
 
 Navigate to {url} and verify:
 
@@ -208,11 +301,11 @@ async def run_test():
 
             emit_agent_step(
                 emitted_step_number,
-                next_goal[:140],
+                summarize_step_title(next_goal, action_summary),
                 "running",
                 current_url,
                 action_summary[:180] if action_summary else None,
-                evaluation[:180] if evaluation else None,
+                summarize_observation(evaluation),
             )
 
         agent = Agent(
@@ -259,20 +352,24 @@ async def run_test():
               final_result = str(value)
 
         status = "passed"
+        failure_kind = None
         if hasattr(history, "is_successful"):
             success = history.is_successful() if callable(history.is_successful) else history.is_successful
             if success is False:
                 status = "failed"
+                failure_kind = classify_failure_kind(final_result)
             elif success is True:
                 status = "passed"
             else:
                 lowered = final_result.lower()
                 if any(token in lowered for token in ["error", "could not", "unable"]):
                     status = "failed"
+                    failure_kind = classify_failure_kind(final_result)
         else:
             lowered = final_result.lower()
             if any(token in lowered for token in ["error", "could not", "unable"]):
                 status = "failed"
+                failure_kind = classify_failure_kind(final_result)
 
         compact_result = compact_result_text(final_result, task, status, simple_verification)
 
@@ -282,6 +379,7 @@ async def run_test():
                 "status": status,
                 "result": compact_result,
                 "error": compact_result if status == "failed" else None,
+                "error_kind": failure_kind,
                 "steps": steps,
             }
         )
@@ -290,8 +388,9 @@ async def run_test():
             {
                 "type": "result",
                 "status": "failed",
-                "result": "Test timed out",
+                "result": f"Run timed out after {timeout}s.",
                 "error": f"Test exceeded {timeout}s timeout",
+                "error_kind": "timeout",
                 "steps": steps,
             }
         )
@@ -300,8 +399,9 @@ async def run_test():
             {
                 "type": "result",
                 "status": "failed",
-                "result": "Test failed with error",
+                "result": "Run failed with a runtime error.",
                 "error": f"{type(error).__name__}: {str(error)}",
+                "error_kind": "runtime",
                 "steps": steps,
             }
         )

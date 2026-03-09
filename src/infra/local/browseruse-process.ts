@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import type { ResolvedModelAccess } from "../../core/models/provider";
-import type { TestRunStep } from "../../core/models/run";
+import type { RunFailureKind, TestRunStep } from "../../core/models/run";
 
 type BrowserUseProcessInput = {
   prompt: string;
@@ -18,6 +18,7 @@ type BrowserUseProcessResult = {
   status: "passed" | "failed" | "cancelled";
   result: string;
   errorMessage?: string;
+  failureKind?: RunFailureKind;
   steps: TestRunStep[];
 };
 
@@ -42,6 +43,7 @@ type StreamMessage =
       status?: "passed" | "failed";
       result?: string;
       error?: string;
+      error_kind?: RunFailureKind;
       steps?: Array<{
         number?: number;
         title?: string;
@@ -177,6 +179,7 @@ export function runBrowserUseLocally(
             status: message.status || "failed",
             result: message.result || "Browser-Use run completed.",
             errorMessage: message.error,
+            failureKind: message.error_kind,
             steps: resultSteps,
           };
         }
@@ -206,6 +209,7 @@ export function runBrowserUseLocally(
           status: "cancelled",
           result: "Run cancelled.",
           errorMessage: undefined,
+          failureKind: "cancelled",
           steps,
         });
         return;
@@ -220,6 +224,7 @@ export function runBrowserUseLocally(
         status: "failed",
         result: "Browser-Use process did not return a final result.",
         errorMessage: stderr.trim() || `Process exited with code ${code ?? "unknown"}.`,
+        failureKind: "runtime",
         steps,
       });
     });

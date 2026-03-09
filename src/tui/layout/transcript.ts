@@ -121,17 +121,33 @@ export function addTranscriptMessage(
     row.add(marker);
     bubble.add(row);
   } else {
+    const isRunSummary = message.variant === "system" && (message.detailLines?.length || 0) > 0;
+
     bubble.add(
       new TextRenderable(renderer, {
         content: message.content,
-        fg: message.variant === "system" ? "#8a8a8a" : "#f5f5f5",
+        fg: isRunSummary ? "#f5f5f5" : message.variant === "system" ? "#8a8a8a" : "#f5f5f5",
         wrapMode: "word",
         selectable: true,
         selectionBg: "#f97316",
         selectionFg: "#050505",
-        attributes: message.variant === "system" ? TextAttributes.DIM : TextAttributes.NONE,
+        attributes: isRunSummary ? TextAttributes.NONE : message.variant === "system" ? TextAttributes.DIM : TextAttributes.NONE,
       }),
     );
+
+    for (const detailLine of message.detailLines || []) {
+      bubble.add(
+        new TextRenderable(renderer, {
+          content: detailLine,
+          fg: isRunSummary ? "#f5f5f5" : "#737373",
+          wrapMode: "word",
+          selectable: true,
+          selectionBg: "#f97316",
+          selectionFg: "#050505",
+          attributes: isRunSummary ? TextAttributes.NONE : TextAttributes.DIM,
+        }),
+      );
+    }
   }
 
   transcript.add(bubble);

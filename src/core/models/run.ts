@@ -68,6 +68,7 @@ export type RunRequest = {
 };
 
 export type RunStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
+export type RunFailureKind = "assertion" | "timeout" | "runtime" | "cancelled";
 
 export type TestRunStepStatus = "queued" | "running" | "passed" | "failed" | "info";
 
@@ -93,6 +94,7 @@ export type TestRun = {
   status: RunStatus;
   result?: string;
   errorMessage?: string;
+  failureKind?: RunFailureKind;
   executionMode: ExecutionMode;
   modelSource: ModelSource;
   modelProvider: ModelProvider;
