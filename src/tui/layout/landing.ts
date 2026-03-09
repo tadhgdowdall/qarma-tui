@@ -2,7 +2,7 @@ import type { CliRenderer } from "@opentui/core";
 import {
   ASCIIFontRenderable,
   BoxRenderable,
-  InputRenderable,
+  TextareaRenderable,
   TextAttributes,
   TextRenderable,
 } from "@opentui/core";
@@ -62,21 +62,32 @@ export function createLandingView(
     }),
   );
 
-  const input = new InputRenderable(renderer, {
-    value: "",
+  const input = new TextareaRenderable(renderer, {
+    initialValue: "",
     placeholder: "Verify sign in reaches the dashboard...",
-    maxLength: 4000,
     width: "100%",
     minWidth: "100%",
     maxWidth: "100%",
+    minHeight: 1,
+    maxHeight: 4,
     overflow: "hidden",
-    paddingX: 1,
     backgroundColor: "#050505",
     textColor: "#fafafa",
+    focusedBackgroundColor: "#050505",
+    focusedTextColor: "#fafafa",
     placeholderColor: "#737373",
+    wrapMode: "word",
+    keyBindings: [
+      { name: "return", action: "submit" },
+      { name: "linefeed", action: "newline" },
+      { name: "return", shift: true, action: "newline" },
+      { name: "linefeed", shift: true, action: "newline" },
+      { name: "return", meta: true, action: "newline" },
+      { name: "linefeed", meta: true, action: "newline" },
+      { name: "j", ctrl: true, action: "newline" },
+    ],
+    onSubmit: () => onSubmit(input.plainText),
   });
-
-  input.on("enter", onSubmit);
   panel.add(input);
 
   panel.add(

@@ -1,5 +1,5 @@
 import type { CliRenderer } from "@opentui/core";
-import { BoxRenderable, InputRenderable, InputRenderableEvents, TextAttributes, TextRenderable } from "@opentui/core";
+import { BoxRenderable, TextareaRenderable, TextAttributes, TextRenderable } from "@opentui/core";
 import type { CommandSuggestion } from "../commands/settings";
 
 export function createComposer(
@@ -28,18 +28,31 @@ export function createComposer(
     marginBottom: 1,
   });
 
-  const input = new InputRenderable(renderer, {
-    value: "",
+  const input = new TextareaRenderable(renderer, {
+    initialValue: "",
     placeholder: "Verify sign in reaches the dashboard...",
-    maxLength: 4000,
     width: "100%",
     minWidth: "100%",
     maxWidth: "100%",
+    minHeight: 1,
+    maxHeight: 4,
     overflow: "hidden",
-    paddingX: 0,
     backgroundColor: "#141414",
     textColor: "#fafafa",
+    focusedBackgroundColor: "#141414",
+    focusedTextColor: "#fafafa",
     placeholderColor: "#6b6b6b",
+    wrapMode: "word",
+    keyBindings: [
+      { name: "return", action: "submit" },
+      { name: "linefeed", action: "newline" },
+      { name: "return", shift: true, action: "newline" },
+      { name: "linefeed", shift: true, action: "newline" },
+      { name: "return", meta: true, action: "newline" },
+      { name: "linefeed", meta: true, action: "newline" },
+      { name: "j", ctrl: true, action: "newline" },
+    ],
+    onSubmit: () => onSubmit(input.plainText),
   });
 
   const suggestions = new BoxRenderable(renderer, {
@@ -53,7 +66,6 @@ export function createComposer(
     visible: false,
   });
 
-  input.on("enter", onSubmit);
   inputShell.add(input);
   composer.add(inputShell);
   composer.add(suggestions);
@@ -111,7 +123,7 @@ export function createComposer(
     updateSuggestions([], 0);
   }
 
-  input.on(InputRenderableEvents.INPUT, () => {
+  input.on("input", () => {
     composer.requestRender();
   });
 

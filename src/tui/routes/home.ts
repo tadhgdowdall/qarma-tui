@@ -189,7 +189,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function currentCommandSuggestions() {
-    return getCommandSuggestions(input.value);
+    return getCommandSuggestions(input.plainText);
   }
 
   function syncCommandSuggestions() {
@@ -307,7 +307,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
     activateWorkspace();
     void submitRun(trimmed);
-    landingInput.value = "";
+    landingInput.clear();
   }
 
   async function handleWorkspaceSubmit(value: string) {
@@ -320,7 +320,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     const selectedSuggestion = suggestions[commandSelectionIndex];
 
     if (commandMenuOpen && selectedSuggestion && shouldAcceptSuggestion(trimmed, selectedSuggestion)) {
-      input.value = selectedSuggestion.insertValue;
+      input.setText(selectedSuggestion.insertValue);
       syncCommandSuggestions();
       input.focus();
       return;
@@ -334,7 +334,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       for (const child of transcript.getChildren()) {
         transcript.remove(child.id);
       }
-      input.value = "";
+      input.clear();
       input.focus();
       syncStatusbar();
       renderer.root.requestRender();
@@ -349,7 +349,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       } else {
         void submitRun(lastSubmittedPrompt);
       }
-      input.value = "";
+      input.clear();
       input.focus();
       return;
     }
@@ -369,7 +369,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
           cancelled ? "#f97316" : "#f87171",
         );
       }
-      input.value = "";
+      input.clear();
       input.focus();
       return;
     }
@@ -380,7 +380,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       syncStatusbar();
       commandMenuOpen = false;
       hideSuggestions();
-      input.value = "";
+      input.clear();
       input.focus();
       return;
     }
@@ -388,7 +388,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     void submitRun(trimmed);
     commandMenuOpen = false;
     hideSuggestions();
-    input.value = "";
+    input.clear();
     input.focus();
   }
 
@@ -452,18 +452,6 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
-    if ((key.name === "return" || key.name === "linefeed") && !key.ctrl && !key.meta) {
-      const suggestions = currentCommandSuggestions();
-      const selectedSuggestion = suggestions[commandSelectionIndex];
-
-      if (commandMenuOpen && selectedSuggestion && shouldAcceptSuggestion(input.value, selectedSuggestion)) {
-        input.value = selectedSuggestion.insertValue;
-        syncCommandSuggestions();
-        input.focus();
-        return;
-      }
-    }
-
     if (key.name === "down") {
       const suggestions = currentCommandSuggestions();
       if (suggestions.length > 0) {
@@ -507,7 +495,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   renderer.root.add(shell.app);
   input.on("input", () => {
     commandSelectionIndex = 0;
-    commandMenuOpen = input.value.trimStart().startsWith("/");
+    commandMenuOpen = input.plainText.trimStart().startsWith("/");
     syncCommandSuggestions();
   });
   landingInput.focus();

@@ -4,6 +4,7 @@ import { mountApp } from "./tui/app";
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
   useAlternateScreen: true,
+  useKittyKeyboard: { events: true },
 });
 
 renderer.keyInput.on("keypress", (key) => {
