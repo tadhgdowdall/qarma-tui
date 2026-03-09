@@ -96,15 +96,38 @@ export function mountHomeRoute(renderer: CliRenderer) {
     addTranscriptMessage(renderer, transcript, message);
   }
 
+  function compactStepTitle(title: string) {
+    return title
+      .replace(/\s+/g, " ")
+      .replace(/^Verify presence of /i, "Check ")
+      .replace(/^Verify that /i, "Check ")
+      .replace(/^Click on /i, "Click ")
+      .replace(/^No further actions required.*$/i, "Finish run")
+      .replace(/^Prepare to report results.*$/i, "Finish run")
+      .trim()
+      .slice(0, 96);
+  }
+
+  function compactStepLine(label: string, value: string) {
+    const compactValue = value
+      .replace(/\s+/g, " ")
+      .replace(/^Pending:\s*/i, "")
+      .replace(/^Status:\s*/i, "")
+      .trim()
+      .slice(0, 120);
+
+    return compactValue ? `${label}  ${compactValue}` : null;
+  }
+
   function appendStepMessage(step: TestRunStep) {
     const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
-      content: step.title,
+      content: compactStepTitle(step.title),
       detailLines: [
-        step.action ? `action  ${step.action}` : null,
-        step.observation ? `note    ${step.observation}` : null,
-        step.url ? `url     ${step.url}` : null,
+        step.action ? compactStepLine("action", step.action) : null,
+        step.observation ? compactStepLine("note", step.observation) : null,
+        step.url ? compactStepLine("url", step.url) : null,
       ].filter((line): line is string => Boolean(line)),
       stepStatus: step.status,
       variant: "step",
@@ -116,7 +139,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   function appendRunSummary(run: TestRun) {
     const summary =
       run.status === "passed"
-        ? `Run passed on ${run.targetUrl} using ${run.executionMode} execution.`
+        ? run.result || `Run passed on ${run.targetUrl}.`
         : `Run ${run.status} on ${run.targetUrl}${run.errorMessage ? `: ${run.errorMessage}` : "."}`;
 
     const message = {

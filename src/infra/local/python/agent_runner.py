@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import re
 
 
 def emit(payload):
@@ -61,6 +62,102 @@ def summarize_action(action):
         return str(action)
 
 
+def is_simple_verification(task: str) -> bool:
+    normalized = " ".join(task.lower().strip().split())
+    if not normalized:
+        return False
+
+    simple_starts = (
+        "verify ",
+        "check ",
+        "confirm ",
+        "make sure ",
+        "ensure ",
+    )
+
+    broad_audit_terms = (
+        "all ",
+        "every ",
+        "full ",
+        "complete ",
+        "entire ",
+        "comprehensive ",
+        "extract ",
+        "all pricing",
+        "all text",
+    )
+
+    return (
+        normalized.startswith(simple_starts)
+        and len(normalized) <= 140
+        and not any(term in normalized for term in broad_audit_terms)
+    )
+
+
+def build_task_prompt(url: str, task: str, simple_verification: bool) -> str:
+    if simple_verification:
+        return f"""You are a QA verification agent.
+
+Navigate to {url} and verify this request:
+
+{task}
+
+Rules:
+- Use the fewest steps needed.
+- Prefer one clear URL check and one strong visible page marker.
+- Stop immediately once the request is clearly verified.
+- Do not broaden the task into a full page audit.
+- Do not extract large amounts of page content unless the request explicitly asks for it.
+- If the expected page or behavior is missing, fail clearly.
+- Do not guess alternative URLs or hidden paths.
+"""
+
+        return f"""You are a QA testing agent. Verify whether the following criteria pass or fail.
+
+Navigate to {url} and verify:
+
+{task}
+
+Rules:
+- Verify outcomes, not just navigation.
+- If expected UI or behavior is missing, fail the test.
+- If the target URL or authentication fails, stop and report failure.
+- Do not guess alternative URLs or hidden paths.
+- Stop when the requested criteria are fully verified.
+"""
+
+
+def compact_result_text(result: str, task: str, status: str, simple_verification: bool) -> str:
+    if not result:
+        return "Verification completed." if status == "passed" else "Verification failed."
+
+    normalized = " ".join(result.split())
+    if not simple_verification:
+        return normalized
+
+    if status == "passed":
+        lowered = normalized.lower()
+
+        url_match = re.search(r"(/[a-z0-9/_-]+)", normalized, re.IGNORECASE)
+        marker_match = re.search(r"'([^']{2,80})'", normalized)
+
+        parts = []
+        if url_match:
+            parts.append(f"confirmed {url_match.group(1)}")
+        if marker_match:
+            parts.append(f'found "{marker_match.group(1)}"')
+
+        if parts:
+            return "Verified: " + " and ".join(parts) + "."
+
+        return f"Verified: {task.rstrip('.')}."
+
+    first_sentence = normalized.split(".")[0].strip()
+    if first_sentence:
+        return first_sentence + "."
+    return "Verification failed."
+
+
 async def run_test():
     from browser_use import Agent, BrowserProfile
     from llm_proxy import get_llm
@@ -83,18 +180,10 @@ async def run_test():
         return
 
     llm = get_llm()
-    full_task = f"""You are a QA testing agent. Verify whether the following criteria pass or fail.
-
-Navigate to {url} and verify:
-
-{task}
-
-Rules:
-- Verify outcomes, not just navigation.
-- If expected UI or behavior is missing, fail the test.
-- If the target URL or authentication fails, stop and report failure.
-- Do not guess alternative URLs or hidden paths.
-"""
+    simple_verification = is_simple_verification(task)
+    full_task = build_task_prompt(url, task, simple_verification)
+    max_steps = 8 if simple_verification else 20
+    max_actions_per_step = 3 if simple_verification else 5
 
     steps = []
     streamed_step_numbers = set()
@@ -131,13 +220,13 @@ Rules:
             llm=llm,
             browser_profile=browser_profile,
             use_vision=True,
-            max_actions_per_step=5,
+            max_actions_per_step=max_actions_per_step,
             step_timeout=min(timeout, 180),
             directly_open_url=True,
             register_new_step_callback=on_new_step,
         )
 
-        return await agent.run(max_steps=20)
+        return await agent.run(max_steps=max_steps)
 
     try:
         history = await asyncio.wait_for(execute(), timeout=timeout)
@@ -185,12 +274,14 @@ Rules:
             if any(token in lowered for token in ["error", "could not", "unable"]):
                 status = "failed"
 
+        compact_result = compact_result_text(final_result, task, status, simple_verification)
+
         emit(
             {
                 "type": "result",
                 "status": status,
-                "result": final_result,
-                "error": final_result if status == "failed" else None,
+                "result": compact_result,
+                "error": compact_result if status == "failed" else None,
                 "steps": steps,
             }
         )
