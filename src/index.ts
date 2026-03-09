@@ -8,7 +8,7 @@ const renderer = await createCliRenderer({
 });
 
 renderer.keyInput.on("keypress", (key) => {
-  if (key.name === "q" || key.name === "escape") {
+  if (key.name === "escape") {
     renderer.destroy();
   }
 });

@@ -25,7 +25,7 @@ export function createComposer(
     paddingRight: 1,
     paddingBottom: 1,
     paddingLeft: 1,
-    marginBottom: 1,
+    gap: 1,
   });
 
   const input = new TextareaRenderable(renderer, {
@@ -59,16 +59,16 @@ export function createComposer(
     flexDirection: "column",
     backgroundColor: "#141414",
     paddingTop: 0,
-    paddingRight: 1,
+    paddingRight: 0,
     paddingBottom: 0,
-    paddingLeft: 1,
+    paddingLeft: 0,
     gap: 0,
     visible: false,
   });
 
   inputShell.add(input);
+  inputShell.add(suggestions);
   composer.add(inputShell);
-  composer.add(suggestions);
 
   function updateSuggestions(items: CommandSuggestion[], selectedIndex: number) {
     for (const child of suggestions.getChildren()) {

@@ -59,6 +59,29 @@ function isValidHttpUrl(value: string) {
   }
 }
 
+function normalizeTargetInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (isValidHttpUrl(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^[a-z0-9.-]+(?::\d+)?(\/.*)?$/i.test(trimmed)) {
+    const scheme = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.|172\.(1[6-9]|2\d|3[0-1])\.|192\.168\.)/i.test(trimmed)
+      ? "http://"
+      : "https://";
+    const candidate = `${scheme}${trimmed}`;
+    if (isValidHttpUrl(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function scoreSuggestion(query: string, suggestion: CommandSuggestion) {
   const normalizedQuery = query.toLowerCase();
   const command = suggestion.command.toLowerCase();
@@ -177,7 +200,7 @@ export async function applySettingsCommand(
         "  up/down browse slash commands",
         "  ctrl+y copy selected text",
         "  tab toggle sidebar",
-        "  q quit",
+        "  esc quit",
         "  ctrl+g dev-skip on landing",
       ].join("\n"),
     };
@@ -185,7 +208,7 @@ export async function applySettingsCommand(
 
   if (command === "target") {
     if (!argument) {
-      return { kind: "message", content: "Usage: /target http://localhost:3000 or /target local", accent: "#f87171" };
+      return { kind: "message", content: "Usage: /target qarma.ie, /target http://localhost:3000, or /target local", accent: "#f87171" };
     }
 
     const preset = resolveTargetPreset(argument);
@@ -203,10 +226,11 @@ export async function applySettingsCommand(
       };
     }
 
-    if (!isValidHttpUrl(argument)) {
-      return { kind: "message", content: "Target must start with http:// or https://", accent: "#f87171" };
+    const normalizedTarget = normalizeTargetInput(argument);
+    if (!normalizedTarget) {
+      return { kind: "message", content: "Target must be a valid URL or domain, for example qarma.ie or http://localhost:3000.", accent: "#f87171" };
     }
-    settings.targetUrl = argument;
+    settings.targetUrl = normalizedTarget;
     settings.targetPreset = undefined;
     return { kind: "message", content: `Target updated to ${settings.targetUrl}.`, accent: "#4ade80" };
   }

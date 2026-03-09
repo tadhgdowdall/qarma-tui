@@ -173,15 +173,15 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    const noteLine = step.observation
+      ? compactStepLine("note", step.observation)
+      : null;
+
     const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
       content: compactStepTitle(step.title),
-      detailLines: [
-        step.action ? compactStepLine("action", step.action) : null,
-        step.observation ? compactStepLine("note", step.observation) : null,
-        step.url ? compactStepLine("url", step.url) : null,
-      ].filter((line): line is string => Boolean(line)),
+      detailLines: noteLine ? [noteLine] : [],
       stepStatus: step.status,
       variant: "step",
     } as const;
@@ -194,7 +194,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
       speaker: "Qarma",
       accent: "#f97316",
       content: "Starting local browser session",
-      detailLines: ["note  Preparing the local runner in the background."],
+      detailLines: [],
       stepStatus: "running",
       variant: "step",
     };
@@ -239,6 +239,29 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
   function currentCommandSuggestions() {
     return getCommandSuggestions(input.plainText);
+  }
+
+  function refreshCommandMenu() {
+    const trimmed = input.plainText.trimStart();
+    const suggestions = getCommandSuggestions(input.plainText);
+    commandMenuOpen = trimmed.startsWith("/") && suggestions.length > 0;
+    commandSelectionIndex = 0;
+
+    if (commandMenuOpen) {
+      updateSuggestions(suggestions, commandSelectionIndex);
+      return;
+    }
+
+    hideSuggestions();
+  }
+
+  function refreshCommandMenuSoon() {
+    setTimeout(() => {
+      if (!workspaceActive) {
+        return;
+      }
+      refreshCommandMenu();
+    }, 0);
   }
 
   function syncCommandSuggestions() {
@@ -555,6 +578,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
     if (key.ctrl && key.name === "y") {
       copyLatestTranscriptMessage();
     }
+
+    if (!key.ctrl && !key.meta) {
+      refreshCommandMenuSoon();
+    }
   });
 
   shell.app.add(sidebar);
@@ -568,9 +595,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   renderer.root.add(landingView);
   renderer.root.add(shell.app);
   input.on("input", () => {
-    commandSelectionIndex = 0;
-    commandMenuOpen = input.plainText.trimStart().startsWith("/");
-    syncCommandSuggestions();
+    refreshCommandMenu();
   });
   landingInput.focus();
   syncStatusbar();
