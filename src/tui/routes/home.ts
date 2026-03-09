@@ -120,6 +120,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
   }
 
   function appendStepMessage(step: TestRunStep) {
+    if (step.title === "Runner started" || step.title === "Resolve model access") {
+      return;
+    }
+
     const message = {
       speaker: "Qarma",
       accent: step.status === "failed" ? "#f87171" : "#f97316",
@@ -132,6 +136,19 @@ export function mountHomeRoute(renderer: CliRenderer) {
       stepStatus: step.status,
       variant: "step",
     } as const;
+    transcriptMessages.push(message);
+    addTranscriptMessage(renderer, transcript, message);
+  }
+
+  function appendOptimisticStartupStep() {
+    const message: Message = {
+      speaker: "Qarma",
+      accent: "#f97316",
+      content: "Starting local browser session",
+      detailLines: ["note  Preparing the local runner in the background."],
+      stepStatus: "running",
+      variant: "step",
+    };
     transcriptMessages.push(message);
     addTranscriptMessage(renderer, transcript, message);
   }
@@ -243,6 +260,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
     stopElapsedTimer();
     elapsedTimer = setInterval(syncStatusbar, 1000);
     syncStatusbar();
+    appendOptimisticStartupStep();
+    renderer.root.requestRender();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const openAiKeySource = await services.secrets.source("openai_api_key");
     if (openAiKeySource === "missing") {
