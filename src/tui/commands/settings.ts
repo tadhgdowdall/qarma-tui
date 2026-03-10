@@ -5,6 +5,7 @@ import { macosKeychainStore } from "../../infra/storage/macos-keychain-store";
 
 export type SettingsCommandResult =
   | { kind: "noop" }
+  | { kind: "open-model-picker" }
   | { kind: "message"; content: string; accent?: string };
 
 export type CommandSuggestion = {
@@ -15,11 +16,18 @@ export type CommandSuggestion = {
   requiresArgument?: boolean;
 };
 
+export type ModelOption = {
+  id: string;
+  label: string;
+  summary: string;
+};
+
 const OPENAI_SECRET_REF = "openai_api_key";
 
 const COMMAND_SUGGESTIONS: CommandSuggestion[] = [
   { command: "target", insertValue: "/target ", summary: "switch target URL or preset", keywords: ["url", "local", "staging", "prod"], requiresArgument: true },
   { command: "settings", insertValue: "/settings", summary: "show effective runtime settings", keywords: ["config", "status"] },
+  { command: "models", insertValue: "/models", summary: "open the model picker", keywords: ["model", "picker", "openai"] },
   { command: "help", insertValue: "/help", summary: "show commands and shortcuts", keywords: ["commands", "shortcuts"] },
   { command: "openai-key", insertValue: "/openai-key ", summary: "load an OpenAI key for this session", keywords: ["key", "secret", "session"], requiresArgument: true },
   { command: "save-openai-key", insertValue: "/save-openai-key ", summary: "save an OpenAI key to secure local storage", keywords: ["keychain", "secure", "persist"], requiresArgument: true },
@@ -32,6 +40,13 @@ const COMMAND_SUGGESTIONS: CommandSuggestion[] = [
   { command: "rerun", insertValue: "/rerun", summary: "rerun the last submitted prompt", keywords: ["repeat", "again"] },
   { command: "clear", insertValue: "/clear", summary: "clear the transcript", keywords: ["wipe", "reset"] },
   { command: "commands", insertValue: "/commands", summary: "alias for /help", keywords: ["help"] },
+];
+
+const MODEL_OPTIONS: ModelOption[] = [
+  { id: "gpt-5-nano", label: "gpt-5-nano", summary: "cheapest, fastest default" },
+  { id: "gpt-4.1-mini", label: "gpt-4.1-mini", summary: "balanced cost and reliability" },
+  { id: "gpt-4o-mini", label: "gpt-4o-mini", summary: "small multimodal general model" },
+  { id: "gpt-4.1", label: "gpt-4.1", summary: "stronger reasoning for harder flows" },
 ];
 
 function normalizeProvider(profileId: string) {
@@ -115,6 +130,44 @@ function scoreSuggestion(query: string, suggestion: CommandSuggestion) {
   return 500 + matched;
 }
 
+function scoreModel(query: string, model: ModelOption) {
+  const normalizedQuery = query.toLowerCase().trim();
+  const label = model.label.toLowerCase();
+  const summary = model.summary.toLowerCase();
+
+  if (!normalizedQuery) {
+    if (label === "gpt-5-nano") return 120;
+    if (label === "gpt-4.1-mini") return 110;
+    return 80;
+  }
+
+  if (label === normalizedQuery) return 1000;
+  if (label.startsWith(normalizedQuery)) return 900 - label.length;
+  if (label.includes(normalizedQuery)) return 700 - label.indexOf(normalizedQuery);
+  if (summary.includes(normalizedQuery)) return 640;
+  return -1;
+}
+
+export function searchCommandSuggestions(query: string, limit = 8) {
+  const normalized = query.trim();
+  return COMMAND_SUGGESTIONS
+    .map((suggestion) => ({ suggestion, score: scoreSuggestion(normalized, suggestion) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((left, right) => right.score - left.score || left.suggestion.command.length - right.suggestion.command.length)
+    .slice(0, limit)
+    .map((entry) => entry.suggestion);
+}
+
+export function searchModelOptions(query: string, limit = 8) {
+  const normalized = query.trim();
+  return MODEL_OPTIONS
+    .map((model) => ({ model, score: scoreModel(normalized, model) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((left, right) => right.score - left.score || left.model.label.length - right.model.label.length)
+    .slice(0, limit)
+    .map((entry) => entry.model);
+}
+
 export function getCommandSuggestions(value: string) {
   const trimmed = value.trimStart();
   if (!trimmed.startsWith("/")) {
@@ -123,13 +176,7 @@ export function getCommandSuggestions(value: string) {
 
   const [rawCommand] = trimmed.slice(1).split(/\s+/, 1);
   const query = rawCommand || "";
-
-  return COMMAND_SUGGESTIONS
-    .map((suggestion) => ({ suggestion, score: scoreSuggestion(query, suggestion) }))
-    .filter((entry) => entry.score >= 0)
-    .sort((left, right) => right.score - left.score || left.suggestion.command.length - right.suggestion.command.length)
-    .slice(0, 6)
-    .map((entry) => entry.suggestion);
+  return searchCommandSuggestions(query, 6);
 }
 
 export function shouldAcceptSuggestion(value: string, suggestion: CommandSuggestion | undefined) {
@@ -154,7 +201,7 @@ export function shouldAcceptSuggestion(value: string, suggestion: CommandSuggest
     return suggestion.command.startsWith(normalizedCommand);
   }
 
-  return suggestion.requiresArgument !== true && !hasArgument;
+  return false;
 }
 
 export async function applySettingsCommand(
@@ -198,12 +245,18 @@ export async function applySettingsCommand(
         "",
         "Shortcuts",
         "  up/down browse slash commands",
+        "  ctrl+p open command palette",
         "  ctrl+y copy selected text",
         "  tab toggle sidebar",
-        "  esc quit",
+        "  esc close modal",
+        "  ctrl+c quit",
         "  ctrl+g dev-skip on landing",
       ].join("\n"),
     };
+  }
+
+  if (command === "models") {
+    return { kind: "open-model-picker" };
   }
 
   if (command === "target") {

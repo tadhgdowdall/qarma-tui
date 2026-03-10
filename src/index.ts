@@ -7,10 +7,4 @@ const renderer = await createCliRenderer({
   useKittyKeyboard: { events: true },
 });
 
-renderer.keyInput.on("keypress", (key) => {
-  if (key.name === "escape") {
-    renderer.destroy();
-  }
-});
-
 mountApp(renderer);

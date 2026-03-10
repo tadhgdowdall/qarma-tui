@@ -7,8 +7,15 @@ import { createShell } from "../layout/shell";
 import { createSidebar } from "../layout/sidebar";
 import { createTranscriptPanel, addTranscriptMessage } from "../layout/transcript";
 import { createComposer } from "../layout/composer";
+import { createPickerModal } from "../layout/picker-modal";
 import { createStatusBar } from "../layout/statusbar";
-import { applySettingsCommand, getCommandSuggestions, shouldAcceptSuggestion } from "../commands/settings";
+import {
+  applySettingsCommand,
+  getCommandSuggestions,
+  searchCommandSuggestions,
+  searchModelOptions,
+  shouldAcceptSuggestion,
+} from "../commands/settings";
 import { sampleMessages } from "../state/mock-data";
 import { buildRunRequest, defaultRunSettings, formatRunSettings } from "../state/run-settings";
 import type { Message, RecentRunSummary } from "../../shared/types";
@@ -27,6 +34,8 @@ export function mountHomeRoute(renderer: CliRenderer) {
   const { panel: transcriptPanel, transcript } = createTranscriptPanel(renderer);
   const { composer, input, updateSuggestions, hideSuggestions } = createComposer(renderer, handleWorkspaceSubmit);
   const statusbar = createStatusBar(renderer, runSettings);
+  const commandPalette = createPickerModal(renderer, "Commands", "Search commands...");
+  const modelPicker = createPickerModal(renderer, "Models", "Search models...");
 
   let sidebarOpen = false;
   let sidebarWidth = 0;
@@ -41,7 +50,119 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let commandSelectionIndex = 0;
   let commandMenuOpen = false;
   let sidebarSelectionIndex = 0;
+  let modalSelectionIndex = 0;
+  let activeModal: "commands" | "models" | null = null;
   const transcriptMessages: Message[] = [];
+
+  function currentCommandPaletteItems() {
+    return searchCommandSuggestions(commandPalette.search.value || "");
+  }
+
+  function currentModelPickerItems() {
+    return searchModelOptions(modelPicker.search.value || "");
+  }
+
+  function syncModal() {
+    const commandItems = currentCommandPaletteItems();
+    const modelItems = currentModelPickerItems();
+    const activeItems = activeModal === "commands" ? commandItems : activeModal === "models" ? modelItems : [];
+
+    if (modalSelectionIndex >= activeItems.length) {
+      modalSelectionIndex = 0;
+    }
+
+    commandPalette.overlay.visible = activeModal === "commands";
+    modelPicker.overlay.visible = activeModal === "models";
+
+    if (activeModal === "commands") {
+      commandPalette.update(
+        commandItems.map((item) => ({
+          id: item.command,
+          label: item.insertValue,
+          summary: item.summary,
+        })),
+        modalSelectionIndex,
+      );
+    } else {
+      commandPalette.update([], 0);
+    }
+
+    if (activeModal === "models") {
+      modelPicker.update(
+        modelItems.map((item) => ({
+          id: item.id,
+          label: item.label,
+          summary: item.summary,
+        })),
+        modalSelectionIndex,
+      );
+    } else {
+      modelPicker.update([], 0);
+    }
+
+    renderer.root.requestRender();
+  }
+
+  function closeModal() {
+    activeModal = null;
+    modalSelectionIndex = 0;
+    commandPalette.search.clear();
+    modelPicker.search.clear();
+    syncModal();
+    if (workspaceActive) {
+      input.focus();
+    } else {
+      landingInput.focus();
+    }
+  }
+
+  function openCommandPalette() {
+    activeModal = "commands";
+    modalSelectionIndex = 0;
+    commandPalette.search.clear();
+    syncModal();
+    commandPalette.search.focus();
+  }
+
+  function openModelPicker() {
+    activeModal = "models";
+    modelPicker.search.clear();
+    const items = currentModelPickerItems();
+    const activeIndex = items.findIndex((item) => item.id === runSettings.modelId);
+    modalSelectionIndex = activeIndex >= 0 ? activeIndex : 0;
+    syncModal();
+    modelPicker.search.focus();
+  }
+
+  async function selectActiveModalItem() {
+    if (activeModal === "commands") {
+      const selected = currentCommandPaletteItems()[modalSelectionIndex];
+      if (!selected) {
+        return;
+      }
+
+      closeModal();
+      if (selected.requiresArgument) {
+        input.setText(selected.insertValue);
+        input.focus();
+        return;
+      }
+      await handleWorkspaceSubmit(selected.insertValue);
+      return;
+    }
+
+    if (activeModal === "models") {
+      const selected = currentModelPickerItems()[modalSelectionIndex];
+      if (!selected) {
+        return;
+      }
+
+      runSettings.modelId = selected.id;
+      appendSystemMessage(`Model updated to ${selected.id}.`, "#4ade80");
+      syncStatusbar();
+      closeModal();
+    }
+  }
 
   function truncatePrompt(prompt: string) {
     return prompt.replace(/\s+/g, " ").trim().slice(0, 44);
@@ -507,6 +628,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
     }
 
     const commandResult = await applySettingsCommand(trimmed, runSettings, services.secrets);
+    if (commandResult.kind === "open-model-picker") {
+      input.clear();
+      openModelPicker();
+      return;
+    }
+
     if (commandResult.kind === "message") {
       appendSystemMessage(commandResult.content, commandResult.accent);
       syncStatusbar();
@@ -577,6 +704,41 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
     if (!workspaceActive) {
       return;
+    }
+
+    if (key.ctrl && key.name === "p") {
+      openCommandPalette();
+      return;
+    }
+
+    if (activeModal) {
+      if (key.name === "escape") {
+        closeModal();
+        return;
+      }
+
+      if (key.name === "down") {
+        const items = activeModal === "commands" ? currentCommandPaletteItems() : currentModelPickerItems();
+        if (items.length > 0) {
+          modalSelectionIndex = (modalSelectionIndex + 1) % items.length;
+          syncModal();
+        }
+        return;
+      }
+
+      if (key.name === "up") {
+        const items = activeModal === "commands" ? currentCommandPaletteItems() : currentModelPickerItems();
+        if (items.length > 0) {
+          modalSelectionIndex = (modalSelectionIndex - 1 + items.length) % items.length;
+          syncModal();
+        }
+        return;
+      }
+
+      if (key.name === "return" || key.name === "linefeed") {
+        void selectActiveModalItem();
+        return;
+      }
     }
 
     if (key.name === "tab") {
@@ -651,8 +813,18 @@ export function mountHomeRoute(renderer: CliRenderer) {
   sidebar.visible = false;
   renderer.root.add(landingView);
   renderer.root.add(shell.app);
+  renderer.root.add(commandPalette.overlay);
+  renderer.root.add(modelPicker.overlay);
   input.on("input", () => {
     refreshCommandMenu();
+  });
+  commandPalette.search.on("input", () => {
+    modalSelectionIndex = 0;
+    syncModal();
+  });
+  modelPicker.search.on("input", () => {
+    modalSelectionIndex = 0;
+    syncModal();
   });
   landingInput.focus();
   syncStatusbar();
