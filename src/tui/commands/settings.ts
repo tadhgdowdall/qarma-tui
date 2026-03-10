@@ -6,6 +6,7 @@ import { macosKeychainStore } from "../../infra/storage/macos-keychain-store";
 export type SettingsCommandResult =
   | { kind: "noop" }
   | { kind: "open-model-picker" }
+  | { kind: "open-target-picker" }
   | { kind: "message"; content: string; accent?: string };
 
 export type CommandSuggestion = {
@@ -22,18 +23,25 @@ export type ModelOption = {
   summary: string;
 };
 
+export type TargetOption = {
+  id: string;
+  label: string;
+  summary: string;
+  url: string;
+  preset?: "local" | "staging" | "production";
+};
+
 const OPENAI_SECRET_REF = "openai_api_key";
 
 const COMMAND_SUGGESTIONS: CommandSuggestion[] = [
-  { command: "target", insertValue: "/target ", summary: "switch target URL or preset", keywords: ["url", "local", "staging", "prod"], requiresArgument: true },
+  { command: "target", insertValue: "/target", summary: "open the target picker or set a URL", keywords: ["url", "local", "staging", "prod", "domain"], requiresArgument: false },
   { command: "settings", insertValue: "/settings", summary: "show effective runtime settings", keywords: ["config", "status"] },
-  { command: "models", insertValue: "/models", summary: "open the model picker", keywords: ["model", "picker", "openai"] },
+  { command: "model", insertValue: "/model", summary: "open the model picker or set a model", keywords: ["models", "picker", "openai", "gpt"], requiresArgument: false },
   { command: "help", insertValue: "/help", summary: "show commands and shortcuts", keywords: ["commands", "shortcuts"] },
   { command: "openai-key", insertValue: "/openai-key ", summary: "load an OpenAI key for this session", keywords: ["key", "secret", "session"], requiresArgument: true },
   { command: "save-openai-key", insertValue: "/save-openai-key ", summary: "save an OpenAI key to secure local storage", keywords: ["keychain", "secure", "persist"], requiresArgument: true },
   { command: "clear-openai-key", insertValue: "/clear-openai-key", summary: "remove the session key override", keywords: ["reset", "key"] },
   { command: "clear-saved-openai-key", insertValue: "/clear-saved-openai-key", summary: "remove the saved secure OpenAI key", keywords: ["keychain", "reset", "key"] },
-  { command: "model", insertValue: "/model ", summary: "switch the model id", keywords: ["gpt", "openai"], requiresArgument: true },
   { command: "provider", insertValue: "/provider ", summary: "switch the provider profile", keywords: ["openai-local", "qarma-managed"], requiresArgument: true },
   { command: "headless", insertValue: "/headless ", summary: "toggle browser visibility", keywords: ["browser", "visible", "ui"], requiresArgument: true },
   { command: "cancel", insertValue: "/cancel", summary: "cancel the current local run", keywords: ["stop", "abort"] },
@@ -74,7 +82,7 @@ function isValidHttpUrl(value: string) {
   }
 }
 
-function normalizeTargetInput(value: string) {
+export function normalizeTargetInput(value: string) {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
@@ -168,6 +176,93 @@ export function searchModelOptions(query: string, limit = 8) {
     .map((entry) => entry.model);
 }
 
+export function searchTargetOptions(query: string, currentTarget: string, limit = 8): TargetOption[] {
+  const normalized = query.trim();
+  const options: TargetOption[] = [];
+  const seen = new Set<string>();
+
+  const local = resolveTargetPreset("local");
+  if (local) {
+    options.push({
+      id: "target-local",
+      label: "local",
+      summary: local.url.replace(/^https?:\/\//, ""),
+      url: local.url,
+      preset: "local",
+    });
+    seen.add(local.url);
+  }
+
+  const staging = resolveTargetPreset("staging");
+  if (staging) {
+    options.push({
+      id: "target-staging",
+      label: "staging",
+      summary: staging.url.replace(/^https?:\/\//, ""),
+      url: staging.url,
+      preset: "staging",
+    });
+    seen.add(staging.url);
+  }
+
+  const production = resolveTargetPreset("production");
+  if (production) {
+    options.push({
+      id: "target-production",
+      label: "production",
+      summary: production.url.replace(/^https?:\/\//, ""),
+      url: production.url,
+      preset: "production",
+    });
+    seen.add(production.url);
+  }
+
+  if (!seen.has(currentTarget)) {
+    options.unshift({
+      id: "target-current",
+      label: "current",
+      summary: currentTarget.replace(/^https?:\/\//, ""),
+      url: currentTarget,
+    });
+    seen.add(currentTarget);
+  }
+
+  const customTarget = normalizeTargetInput(normalized);
+  if (customTarget && !seen.has(customTarget)) {
+    options.unshift({
+      id: "target-custom",
+      label: `use ${customTarget.replace(/^https?:\/\//, "")}`,
+      summary: "custom target",
+      url: customTarget,
+    });
+  }
+
+  if (!normalized) {
+    return options.slice(0, limit);
+  }
+
+  const scored = options
+    .map((option) => {
+      const label = option.label.toLowerCase();
+      const summary = option.summary.toLowerCase();
+      const target = option.url.toLowerCase();
+      let score = -1;
+
+      if (label === normalized.toLowerCase()) score = 1000;
+      else if (label.startsWith(normalized.toLowerCase())) score = 900 - label.length;
+      else if (target.includes(normalized.toLowerCase())) score = 820 - target.indexOf(normalized.toLowerCase());
+      else if (summary.includes(normalized.toLowerCase())) score = 760 - summary.indexOf(normalized.toLowerCase());
+
+      return { option, score };
+    })
+    .filter((entry) => entry.score >= 0)
+    .sort((left, right) => right.score - left.score || left.option.label.length - right.option.label.length)
+    .slice(0, limit)
+    .map((entry) => entry.option);
+
+  return scored;
+}
+
 export function getCommandSuggestions(value: string) {
   const trimmed = value.trimStart();
   if (!trimmed.startsWith("/")) {
@@ -231,7 +326,7 @@ export async function applySettingsCommand(
       content: [
         "Commands",
         "  /settings",
-        "  /target <url|local|staging|prod>",
+        "  /target [url|local|staging|prod]",
         "  /openai-key <key>",
         "  /clear-openai-key",
         "  /save-openai-key <key>",
@@ -239,7 +334,7 @@ export async function applySettingsCommand(
         "  /cancel",
         "  /rerun",
         "  /clear",
-        "  /model <model-id>",
+        "  /model [model-id]",
         "  /provider openai-local|qarma-managed",
         "  /headless on|off",
         "",
@@ -261,7 +356,7 @@ export async function applySettingsCommand(
 
   if (command === "target") {
     if (!argument) {
-      return { kind: "message", content: "Usage: /target qarma.ie, /target http://localhost:3000, or /target local", accent: "#f87171" };
+      return { kind: "open-target-picker" };
     }
 
     const preset = resolveTargetPreset(argument);
@@ -359,7 +454,7 @@ export async function applySettingsCommand(
 
   if (command === "model") {
     if (!argument) {
-      return { kind: "message", content: "Usage: /model gpt-5-nano", accent: "#f87171" };
+      return { kind: "open-model-picker" };
     }
     settings.modelId = argument;
     return { kind: "message", content: `Model updated to ${settings.modelId}.`, accent: "#4ade80" };

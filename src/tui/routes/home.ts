@@ -14,6 +14,7 @@ import {
   getCommandSuggestions,
   searchCommandSuggestions,
   searchModelOptions,
+  searchTargetOptions,
   shouldAcceptSuggestion,
 } from "../commands/settings";
 import { sampleMessages } from "../state/mock-data";
@@ -36,6 +37,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   const statusbar = createStatusBar(renderer, runSettings);
   const commandPalette = createPickerModal(renderer, "Commands", "Search commands...");
   const modelPicker = createPickerModal(renderer, "Models", "Search models...");
+  const targetPicker = createPickerModal(renderer, "Target", "Search targets or type a domain...");
 
   let sidebarOpen = false;
   let sidebarWidth = 0;
@@ -51,7 +53,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   let commandMenuOpen = false;
   let sidebarSelectionIndex = 0;
   let modalSelectionIndex = 0;
-  let activeModal: "commands" | "models" | null = null;
+  let activeModal: "commands" | "models" | "targets" | null = null;
   const transcriptMessages: Message[] = [];
 
   function currentCommandPaletteItems() {
@@ -62,10 +64,22 @@ export function mountHomeRoute(renderer: CliRenderer) {
     return searchModelOptions(modelPicker.search.value || "");
   }
 
+  function currentTargetPickerItems() {
+    return searchTargetOptions(targetPicker.search.value || "", runSettings.targetUrl);
+  }
+
   function syncModal() {
     const commandItems = currentCommandPaletteItems();
     const modelItems = currentModelPickerItems();
-    const activeItems = activeModal === "commands" ? commandItems : activeModal === "models" ? modelItems : [];
+    const targetItems = currentTargetPickerItems();
+    const activeItems =
+      activeModal === "commands"
+        ? commandItems
+        : activeModal === "models"
+          ? modelItems
+          : activeModal === "targets"
+            ? targetItems
+            : [];
 
     if (modalSelectionIndex >= activeItems.length) {
       modalSelectionIndex = 0;
@@ -73,6 +87,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
     commandPalette.overlay.visible = activeModal === "commands";
     modelPicker.overlay.visible = activeModal === "models";
+    targetPicker.overlay.visible = activeModal === "targets";
 
     if (activeModal === "commands") {
       commandPalette.update(
@@ -100,6 +115,19 @@ export function mountHomeRoute(renderer: CliRenderer) {
       modelPicker.update([], 0);
     }
 
+    if (activeModal === "targets") {
+      targetPicker.update(
+        targetItems.map((item) => ({
+          id: item.id,
+          label: item.label,
+          summary: item.summary,
+        })),
+        modalSelectionIndex,
+      );
+    } else {
+      targetPicker.update([], 0);
+    }
+
     renderer.root.requestRender();
   }
 
@@ -108,6 +136,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     modalSelectionIndex = 0;
     commandPalette.search.clear();
     modelPicker.search.clear();
+    targetPicker.search.clear();
     syncModal();
     if (workspaceActive) {
       input.focus();
@@ -132,6 +161,16 @@ export function mountHomeRoute(renderer: CliRenderer) {
     modalSelectionIndex = activeIndex >= 0 ? activeIndex : 0;
     syncModal();
     modelPicker.search.focus();
+  }
+
+  function openTargetPicker() {
+    activeModal = "targets";
+    targetPicker.search.clear();
+    const items = currentTargetPickerItems();
+    const activeIndex = items.findIndex((item) => item.url === runSettings.targetUrl);
+    modalSelectionIndex = activeIndex >= 0 ? activeIndex : 0;
+    syncModal();
+    targetPicker.search.focus();
   }
 
   async function selectActiveModalItem() {
@@ -159,6 +198,19 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
       runSettings.modelId = selected.id;
       appendSystemMessage(`Model updated to ${selected.id}.`, "#4ade80");
+      syncStatusbar();
+      closeModal();
+    }
+
+    if (activeModal === "targets") {
+      const selected = currentTargetPickerItems()[modalSelectionIndex];
+      if (!selected) {
+        return;
+      }
+
+      runSettings.targetUrl = selected.url;
+      runSettings.targetPreset = selected.preset;
+      appendSystemMessage(`Target updated to ${selected.url}.`, "#4ade80");
       syncStatusbar();
       closeModal();
     }
@@ -634,6 +686,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    if (commandResult.kind === "open-target-picker") {
+      input.clear();
+      openTargetPicker();
+      return;
+    }
+
     if (commandResult.kind === "message") {
       appendSystemMessage(commandResult.content, commandResult.accent);
       syncStatusbar();
@@ -718,7 +776,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
       }
 
       if (key.name === "down") {
-        const items = activeModal === "commands" ? currentCommandPaletteItems() : currentModelPickerItems();
+        const items =
+          activeModal === "commands"
+            ? currentCommandPaletteItems()
+            : activeModal === "models"
+              ? currentModelPickerItems()
+              : currentTargetPickerItems();
         if (items.length > 0) {
           modalSelectionIndex = (modalSelectionIndex + 1) % items.length;
           syncModal();
@@ -727,7 +790,12 @@ export function mountHomeRoute(renderer: CliRenderer) {
       }
 
       if (key.name === "up") {
-        const items = activeModal === "commands" ? currentCommandPaletteItems() : currentModelPickerItems();
+        const items =
+          activeModal === "commands"
+            ? currentCommandPaletteItems()
+            : activeModal === "models"
+              ? currentModelPickerItems()
+              : currentTargetPickerItems();
         if (items.length > 0) {
           modalSelectionIndex = (modalSelectionIndex - 1 + items.length) % items.length;
           syncModal();
@@ -815,6 +883,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
   renderer.root.add(shell.app);
   renderer.root.add(commandPalette.overlay);
   renderer.root.add(modelPicker.overlay);
+  renderer.root.add(targetPicker.overlay);
   input.on("input", () => {
     refreshCommandMenu();
   });
@@ -823,6 +892,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
     syncModal();
   });
   modelPicker.search.on("input", () => {
+    modalSelectionIndex = 0;
+    syncModal();
+  });
+  targetPicker.search.on("input", () => {
     modalSelectionIndex = 0;
     syncModal();
   });
