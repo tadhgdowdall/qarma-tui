@@ -17,7 +17,8 @@
   "private": false,
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "doctor": "bun run src/index.ts doctor"
   },
   "devDependencies": {
     "@types/bun": "latest"
