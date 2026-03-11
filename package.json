@@ -9,16 +9,29 @@
     "url": "https://github.com/tadhgdowdall/qarma-tui.git"
   },
   "homepage": "https://github.com/tadhgdowdall/qarma-tui",
+  "bin": {
+    "qarma-tui": "./bin/qarma-tui"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "bugs": {
     "url": "https://github.com/tadhgdowdall/qarma-tui/issues"
   },
-  "module": "src/index.ts",
   "type": "module",
   "private": false,
+  "engines": {
+    "bun": ">=1.1.0"
+  },
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "doctor": "bun run src/index.ts doctor"
+    "dev": "QARMA_SKIP_SETUP_PROMPT=1 bun run --watch src/index.ts",
+    "start": "QARMA_SKIP_SETUP_PROMPT=1 bun run src/index.ts",
+    "doctor": "QARMA_SKIP_SETUP_PROMPT=1 bun run src/index.ts doctor",
+    "setup": "QARMA_SKIP_SETUP_PROMPT=1 bun run src/index.ts setup",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest"

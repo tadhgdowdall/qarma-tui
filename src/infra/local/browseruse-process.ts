@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import type { ResolvedModelAccess } from "../../core/models/provider";
 import type { RunFailureKind, TestRunStep } from "../../core/models/run";
+import { resolvePythonRuntime } from "../runtime/python-runtime";
 
 type BrowserUseProcessInput = {
   prompt: string;
@@ -131,7 +132,7 @@ export function runBrowserUseLocally(
     }
   }
 
-  const pythonBin = process.env.QARMA_PYTHON_BIN || "python3";
+  const pythonBin = resolvePythonRuntime().pythonBin;
   const proc = spawn(pythonBin, [agentRunnerPath], {
     env,
     stdio: ["ignore", "pipe", "pipe"],

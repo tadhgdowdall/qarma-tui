@@ -29,39 +29,61 @@ Qarma TUI should eventually support:
 - Qarma-managed execution
 - bring-your-own model access with API keys or local models
 
-## Getting Started
+## Install
 
-### Requirements
+### Recommended CLI install
 
-- Bun
-- a terminal with decent ANSI support
-- Python 3 for local Browser-Use runs
+```bash
+curl -fsSL https://bun.sh/install | bash
+bun add -g qarma-tui
+qarma-tui
+```
 
-### Install
+On first launch, Qarma TUI will offer to install its managed local runtime automatically.
+
+You can also run setup explicitly:
+
+```bash
+qarma-tui setup
+qarma-tui doctor
+qarma-tui
+```
+
+For one-off use:
+
+```bash
+bunx qarma-tui
+```
+
+### Development install
+
+For contributors working from source:
 
 ```bash
 bun install
 ```
 
-For local Browser-Use runs, install the Python dependencies:
-
-```bash
-python3 -m pip install -r src/infra/local/python/requirements.txt
-```
-
-### Run
+Run from source with:
 
 ```bash
 bun start
 ```
 
-### Watch mode
+Or use watch mode:
 
 ```bash
 bun dev
 ```
 
-Quit with `q`, `Esc`, or `Ctrl+C`.
+## Runtime Requirements
+
+- Bun for the published CLI
+- a terminal with decent ANSI support
+- Python 3 available on the machine for the managed local runtime bootstrap
+
+The standard CLI path no longer expects users to manually run `pip install ...`. `qarma-tui setup` owns the local runtime.
+
+Quit with `Esc` or `Ctrl+C`.
 
 ## Local Execution
 
