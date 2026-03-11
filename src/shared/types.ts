@@ -15,6 +15,7 @@ export type SessionSummary = {
 
 export type RecentRunSummary = {
   id: string;
+  timestamp: number;
   prompt: string;
   target: string;
   status: "running" | "passed" | "failed" | "cancelled";

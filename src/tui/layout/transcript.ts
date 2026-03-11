@@ -7,7 +7,10 @@ import {
 } from "@opentui/core";
 import type { Message } from "../../shared/types";
 
-export function createTranscriptPanel(renderer: CliRenderer) {
+export function createTranscriptPanel(
+  renderer: CliRenderer,
+  onInteractionEnd?: () => void,
+) {
   const panel = new BoxRenderable(renderer, {
     flexDirection: "column",
     flexGrow: 1,
@@ -17,6 +20,9 @@ export function createTranscriptPanel(renderer: CliRenderer) {
     paddingLeft: 1,
     gap: 0,
     backgroundColor: "#0a0a0a",
+    onMouseUp: () => {
+      onInteractionEnd?.();
+    },
   });
 
   const transcript = new ScrollBoxRenderable(renderer, {
@@ -37,6 +43,9 @@ export function createTranscriptPanel(renderer: CliRenderer) {
       flexDirection: "column",
       gap: 1,
       paddingRight: 1,
+    },
+    onMouseUp: () => {
+      onInteractionEnd?.();
     },
   });
 
