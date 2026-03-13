@@ -159,9 +159,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    landingInput.setText("");
+    landingInput.requestRender();
     activateWorkspace();
     void runController.submitRun(trimmed);
-    landingInput.clear();
   }
 
   async function handleWorkspaceSubmit(value: string) {
@@ -233,8 +234,8 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
-    await runController.submitRun(trimmed);
     resetWorkspaceInput();
+    await runController.submitRun(trimmed);
   }
 
   renderer.keyInput.on("keypress", (key: HomeKey) => {

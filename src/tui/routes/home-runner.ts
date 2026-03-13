@@ -122,8 +122,30 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
     return `Run failed: ${normalizedDetail}`;
   }
 
+  function getLastMeaningfulStep(run: TestRun) {
+    for (let index = run.steps.length - 1; index >= 0; index -= 1) {
+      const step = run.steps[index];
+      if (!step) {
+        continue;
+      }
+
+      const note = step.observation?.replace(/\s+/g, " ").trim();
+      if (note) {
+        return note;
+      }
+
+      const title = step.title?.replace(/\s+/g, " ").trim();
+      if (title && title !== "Runner started" && title !== "Resolve model access") {
+        return title;
+      }
+    }
+
+    return "";
+  }
+
   function buildOverallSummary(run: TestRun, summary: string) {
     const normalized = summary.replace(/\s+/g, " ").trim();
+    const lastStep = getLastMeaningfulStep(run);
 
     if (run.status === "passed") {
       const withoutPrefix = normalized.replace(/^Verified:\s*/i, "");
@@ -131,15 +153,27 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
     }
 
     if (run.status === "cancelled") {
-      return "The run was cancelled before the requested check completed.";
+      return lastStep
+        ? `The run was cancelled before completion. Last progress: ${lastStep}`
+        : "The run was cancelled before the requested check completed.";
     }
 
     if (run.failureKind === "timeout") {
-      return "The requested check did not complete before the timeout was reached.";
+      return lastStep
+        ? `The requested check timed out before completion. Last progress: ${lastStep}`
+        : "The requested check did not complete before the timeout was reached.";
     }
 
     if (run.failureKind === "runtime") {
-      return `The run failed due to a runtime issue. ${normalized}`;
+      return lastStep
+        ? `The run failed due to a runtime issue after: ${lastStep}`
+        : `The run failed due to a runtime issue. ${normalized}`;
+    }
+
+    if (run.failureKind === "assertion") {
+      return lastStep
+        ? `The requested check failed after: ${lastStep}`
+        : `The requested check failed. ${normalized}`;
     }
 
     return `The requested check failed. ${normalized}`;

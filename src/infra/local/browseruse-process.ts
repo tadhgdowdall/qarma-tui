@@ -136,6 +136,7 @@ export function runBrowserUseLocally(
   const proc = spawn(pythonBin, [agentRunnerPath], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
 
   const steps: TestRunStep[] = [];
@@ -143,6 +144,25 @@ export function runBrowserUseLocally(
   let stderr = "";
   let finalResult: BrowserUseProcessResult | null = null;
   let cancelled = false;
+  let forcedKillTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastStepFingerprint = "";
+
+  function killProcessTree(signal: NodeJS.Signals) {
+    if (!proc.pid) {
+      return;
+    }
+
+    if (process.platform === "win32") {
+      proc.kill(signal);
+      return;
+    }
+
+    try {
+      process.kill(-proc.pid, signal);
+    } catch {
+      proc.kill(signal);
+    }
+  }
 
   proc.stdout.on("data", (chunk: Buffer) => {
     stdoutBuffer += chunk.toString();
@@ -158,6 +178,16 @@ export function runBrowserUseLocally(
         const message = JSON.parse(line) as StreamMessage;
 
         if (message.type === "step") {
+          const fingerprint = JSON.stringify([
+            message.title || message.description || "",
+            message.status || "",
+            message.observation || "",
+          ]);
+          if (fingerprint === lastStepFingerprint) {
+            continue;
+          }
+          lastStepFingerprint = fingerprint;
+
           const step = toRunStep(
             {
               number: message.step,
@@ -197,15 +227,34 @@ export function runBrowserUseLocally(
   return {
     cancel() {
       cancelled = true;
-      proc.kill("SIGTERM");
+      killProcessTree("SIGTERM");
+      forcedKillTimer = setTimeout(() => {
+        killProcessTree("SIGKILL");
+      }, 2500);
     },
     result: new Promise((resolve, reject) => {
     proc.on("error", (error) => {
       reject(error);
     });
 
-    proc.on("close", (code) => {
+    proc.on("close", (code, signal) => {
+      if (forcedKillTimer) {
+        clearTimeout(forcedKillTimer);
+        forcedKillTimer = null;
+      }
+
       if (cancelled) {
+        resolve({
+          status: "cancelled",
+          result: "Run cancelled.",
+          errorMessage: undefined,
+          failureKind: "cancelled",
+          steps,
+        });
+        return;
+      }
+
+      if (signal === "SIGTERM" || signal === "SIGKILL") {
         resolve({
           status: "cancelled",
           result: "Run cancelled.",

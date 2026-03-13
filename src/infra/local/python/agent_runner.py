@@ -129,6 +129,14 @@ def summarize_observation(observation):
     return compact_sentence(normalized, "", limit=110) or None
 
 
+def normalize_step_key(title, observation, url):
+    return (
+        normalize_text(title).lower(),
+        normalize_text(observation).lower(),
+        normalize_text(url).lower(),
+    )
+
+
 def classify_failure_kind(text):
     lowered = normalize_text(text).lower()
 
@@ -198,9 +206,14 @@ Navigate to {url} and verify this request:
 Rules:
 - Use the fewest steps needed.
 - Prefer one clear URL check and one strong visible page marker.
+- Use built-in navigation and text checks before any heavier page inspection.
 - Stop immediately once the request is clearly verified.
+- Do not verify the same condition twice.
+- Once the URL or marker is confirmed, immediately finish with a concise pass/fail result.
 - Do not broaden the task into a full page audit.
 - Do not extract large amounts of page content unless the request explicitly asks for it.
+- Avoid extract() unless the request explicitly asks for extracted content.
+- Avoid evaluate() unless a direct text or URL check cannot answer the request.
 - If the expected page or behavior is missing, fail clearly.
 - Do not guess alternative URLs or hidden paths.
 """
@@ -251,6 +264,32 @@ def compact_result_text(result: str, task: str, status: str, simple_verification
     return "Verification failed."
 
 
+def build_result_summary(status, failure_kind, compact_result, last_progress=None):
+    progress = normalize_text(last_progress or "")
+
+    if status == "passed":
+        return compact_result
+
+    if failure_kind == "cancelled":
+        if progress:
+            return f"Run cancelled after: {progress}"
+        return "Run cancelled before verification completed."
+
+    if failure_kind == "timeout":
+        if progress:
+            return f"Run timed out before completion. Last progress: {progress}"
+        return "Run timed out before the requested check completed."
+
+    if failure_kind == "assertion":
+        if progress:
+            return f"Requested check failed. Last progress: {progress}"
+        return compact_result or "Requested check failed."
+
+    if progress:
+        return f"Run failed due to a runtime issue. Last progress: {progress}"
+    return compact_result or "Run failed due to a runtime issue."
+
+
 async def run_test():
     from browser_use import Agent, BrowserProfile
     from llm_proxy import get_llm
@@ -275,11 +314,13 @@ async def run_test():
     llm = get_llm()
     simple_verification = is_simple_verification(task)
     full_task = build_task_prompt(url, task, simple_verification)
-    max_steps = 8 if simple_verification else 20
-    max_actions_per_step = 3 if simple_verification else 5
+    max_steps = 5 if simple_verification else 20
+    max_actions_per_step = 2 if simple_verification else 5
 
     steps = []
     streamed_step_numbers = set()
+    streamed_step_keys = set()
+    last_progress_summary = ""
     browser_profile = BrowserProfile(headless=headless)
 
     async def execute():
@@ -287,6 +328,7 @@ async def run_test():
         streamed_step_numbers.add(1)
 
         def on_new_step(browser_state_summary, model_output, step_number):
+            nonlocal last_progress_summary
             next_goal = getattr(model_output, "next_goal", None) or "Agent step"
             evaluation = getattr(model_output, "evaluation_previous_goal", None)
             action_summary = None
@@ -297,24 +339,33 @@ async def run_test():
 
             current_url = getattr(browser_state_summary, "url", None)
             emitted_step_number = step_number + 1
+            step_title = summarize_step_title(next_goal, action_summary)
+            step_observation = summarize_observation(evaluation)
+            step_key = normalize_step_key(step_title, step_observation, current_url)
+
+            if step_key in streamed_step_keys:
+                return
+
             streamed_step_numbers.add(emitted_step_number)
+            streamed_step_keys.add(step_key)
+            last_progress_summary = step_observation or step_title
 
             emit_agent_step(
                 emitted_step_number,
-                summarize_step_title(next_goal, action_summary),
+                step_title,
                 "running",
                 current_url,
                 action_summary[:180] if action_summary else None,
-                summarize_observation(evaluation),
+                step_observation,
             )
 
         agent = Agent(
             task=full_task,
             llm=llm,
             browser_profile=browser_profile,
-            use_vision=True,
+            use_vision=not simple_verification,
             max_actions_per_step=max_actions_per_step,
-            step_timeout=min(timeout, 180),
+            step_timeout=min(45 if simple_verification else 90, timeout),
             directly_open_url=True,
             register_new_step_callback=on_new_step,
         )
@@ -339,11 +390,13 @@ async def run_test():
 
                 step = {
                     "number": index,
-                    "title": description[:120],
+                    "title": summarize_step_title(description),
                     "status": "passed",
                 }
                 steps.append(step)
                 emit_agent_step(index, step["title"], "passed")
+                if not last_progress_summary:
+                    last_progress_summary = step["title"]
 
         final_result = "Task completed"
         if hasattr(history, "final_result"):
@@ -372,23 +425,35 @@ async def run_test():
                 failure_kind = classify_failure_kind(final_result)
 
         compact_result = compact_result_text(final_result, task, status, simple_verification)
+        summary_result = build_result_summary(
+            status,
+            failure_kind,
+            compact_result,
+            last_progress_summary,
+        )
 
         emit(
             {
                 "type": "result",
                 "status": status,
-                "result": compact_result,
-                "error": compact_result if status == "failed" else None,
+                "result": summary_result,
+                "error": summary_result if status == "failed" else None,
                 "error_kind": failure_kind,
                 "steps": steps,
             }
         )
     except asyncio.TimeoutError:
+        timeout_result = build_result_summary(
+            "failed",
+            "timeout",
+            f"Run timed out after {timeout}s.",
+            last_progress_summary,
+        )
         emit(
             {
                 "type": "result",
                 "status": "failed",
-                "result": f"Run timed out after {timeout}s.",
+                "result": timeout_result,
                 "error": f"Test exceeded {timeout}s timeout",
                 "error_kind": "timeout",
                 "steps": steps,
