@@ -14,6 +14,14 @@ function isSupportedPlatform() {
   return process.platform === "darwin";
 }
 
+function shellEscapeSingleQuoted(value: string) {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function toHexSecret(value: string) {
+  return Buffer.from(value, "utf8").toString("hex");
+}
+
 function readKeychain(secretRef: string) {
   if (!isSupportedPlatform()) {
     return null;
@@ -64,10 +72,27 @@ export const macosKeychainStore: SecretStore & {
       throw new Error("Secret value cannot be empty.");
     }
 
+    const command = [
+      "add-generic-password",
+      "-U",
+      "-s",
+      shellEscapeSingleQuoted(SERVICE_PREFIX),
+      "-a",
+      shellEscapeSingleQuoted(account),
+      "-X",
+      toHexSecret(normalized),
+      "-T",
+      '""',
+    ].join(" ");
+
     const result = spawnSync(
       "/usr/bin/security",
-      ["add-generic-password", "-U", "-s", SERVICE_PREFIX, "-a", account, "-w", normalized],
-      { stdio: ["ignore", "ignore", "ignore"] },
+      ["-i"],
+      {
+        stdio: ["pipe", "ignore", "ignore"],
+        input: `${command}\n`,
+        encoding: "utf8",
+      },
     );
 
     if (result.status !== 0) {
