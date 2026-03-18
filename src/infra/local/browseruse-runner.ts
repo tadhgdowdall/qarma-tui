@@ -97,6 +97,7 @@ export function createBrowserUseRunner(
       run.result = processResult.result;
       run.errorMessage = processResult.errorMessage;
       run.failureKind = processResult.failureKind;
+      run.screenshots = processResult.screenshots;
       run.completedAt = new Date().toISOString();
       run.durationMs = new Date(run.completedAt).getTime() - new Date(startedAt).getTime();
 

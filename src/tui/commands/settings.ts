@@ -7,6 +7,7 @@ export type SettingsCommandResult =
   | { kind: "noop" }
   | { kind: "open-model-picker" }
   | { kind: "open-target-picker" }
+  | { kind: "open-screenshot-modal" }
   | { kind: "open-session-key-prompt" }
   | { kind: "open-persisted-key-prompt" }
   | { kind: "message"; content: string; accent?: string };
@@ -40,6 +41,7 @@ const COMMAND_SUGGESTIONS: CommandSuggestion[] = [
   { command: "settings", insertValue: "/settings", summary: "show effective runtime settings", keywords: ["config", "status"] },
   { command: "model", insertValue: "/model", summary: "open the model picker or set a model", keywords: ["models", "picker", "openai", "gpt"], requiresArgument: false },
   { command: "help", insertValue: "/help", summary: "show commands and shortcuts", keywords: ["commands", "shortcuts"] },
+  { command: "screenshot", insertValue: "/screenshot", summary: "open the latest run screenshot", keywords: ["evidence", "image", "result"] },
   { command: "openai-key", insertValue: "/openai-key", summary: "load an OpenAI key for this session", keywords: ["key", "secret", "session"], requiresArgument: false },
   { command: "save-openai-key", insertValue: "/save-openai-key", summary: "save an OpenAI key to secure local storage", keywords: ["keychain", "secure", "persist"], requiresArgument: false },
   { command: "clear-openai-key", insertValue: "/clear-openai-key", summary: "remove the session key override", keywords: ["reset", "key"] },
@@ -329,6 +331,7 @@ export async function applySettingsCommand(
         "Commands",
         "  /settings",
         "  /target [url|local|staging|prod]",
+        "  /screenshot",
         "  /openai-key",
         "  /clear-openai-key",
         "  /save-openai-key",
@@ -343,6 +346,7 @@ export async function applySettingsCommand(
         "Shortcuts",
         "  up/down browse slash commands",
         "  ctrl+p open command palette",
+        "  ctrl+o open latest screenshot",
         "  ctrl+y copy selected text",
         "  tab toggle sidebar",
         "  esc close modal",
@@ -354,6 +358,10 @@ export async function applySettingsCommand(
 
   if (command === "models") {
     return { kind: "open-model-picker" };
+  }
+
+  if (command === "screenshot") {
+    return { kind: "open-screenshot-modal" };
   }
 
   if (command === "target") {

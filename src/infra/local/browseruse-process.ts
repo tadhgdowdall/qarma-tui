@@ -21,6 +21,7 @@ type BrowserUseProcessResult = {
   errorMessage?: string;
   failureKind?: RunFailureKind;
   steps: TestRunStep[];
+  screenshots: string[];
 };
 
 type BrowserUseProcessHandle = {
@@ -45,6 +46,7 @@ type StreamMessage =
       result?: string;
       error?: string;
       error_kind?: RunFailureKind;
+      screenshot?: string;
       steps?: Array<{
         number?: number;
         title?: string;
@@ -212,6 +214,7 @@ export function runBrowserUseLocally(
             errorMessage: message.error,
             failureKind: message.error_kind,
             steps: resultSteps,
+            screenshots: message.screenshot ? [message.screenshot] : [],
           };
         }
       } catch {
@@ -250,6 +253,7 @@ export function runBrowserUseLocally(
           errorMessage: undefined,
           failureKind: "cancelled",
           steps,
+          screenshots: [],
         });
         return;
       }
@@ -261,6 +265,7 @@ export function runBrowserUseLocally(
           errorMessage: undefined,
           failureKind: "cancelled",
           steps,
+          screenshots: [],
         });
         return;
       }
@@ -276,6 +281,7 @@ export function runBrowserUseLocally(
         errorMessage: stderr.trim() || `Process exited with code ${code ?? "unknown"}.`,
         failureKind: "runtime",
         steps,
+        screenshots: [],
       });
     });
     }),

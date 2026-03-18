@@ -29,6 +29,7 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
   let activeRunStatus: RuntimeStatus = "idle";
   let activeRunStartedAt: number | null = null;
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  let latestScreenshot: string | null = null;
   const transcriptMessages: Message[] = [];
 
   function stopElapsedTimer() {
@@ -232,6 +233,7 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
         `status  ${run.status}`,
         `target  ${run.targetUrl.replace(/^https?:\/\//, "")}`,
         durationSeconds ? `duration  ${durationSeconds}s` : null,
+        run.screenshots.length > 0 ? "evidence  screenshot available (/screenshot or ctrl+o)" : null,
       ].filter((line): line is string => Boolean(line)),
       variant: "system",
     });
@@ -253,6 +255,7 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
     }
 
     lastSubmittedPrompt = trimmed;
+    latestScreenshot = null;
     const recentRun = options.addRecentRun(trimmed, options.runSettings.targetUrl);
     appendPromptExchange(trimmed);
     runInFlight = true;
@@ -292,6 +295,7 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
       );
 
       activeRunStatus = normalizeRunStatus(run.status);
+      latestScreenshot = run.screenshots[0] || null;
       options.updateRecentRun(
         recentRun,
         run.status === "queued" ? "running" : run.status,
@@ -395,6 +399,7 @@ export function createHomeRunController(options: HomeRunControllerOptions) {
     copyLatestTranscriptMessage,
     appendSystemMessage,
     syncStatusbar,
+    getLatestScreenshot: () => latestScreenshot,
     isRunInFlight: () => runInFlight,
   };
 }

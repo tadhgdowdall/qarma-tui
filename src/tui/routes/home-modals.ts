@@ -9,6 +9,7 @@ import {
 import type { RunSettings } from "../state/run-settings";
 import type { MutableSecretStore } from "../../infra/storage/session-secret-store";
 import { macosKeychainStore } from "../../infra/storage/macos-keychain-store";
+import { openScreenshotExternally } from "../../infra/local/screenshot-viewer";
 
 type HomeKey = {
   name?: string;
@@ -31,6 +32,7 @@ type HomeModalControllerOptions = {
   handleWorkspaceSubmit: (value: string) => Promise<void>;
   isWorkspaceActive: () => boolean;
   secrets: MutableSecretStore;
+  getLatestScreenshot: () => string | null;
 };
 
 export function createHomeModalController(
@@ -61,7 +63,6 @@ export function createHomeModalController(
     "Secure OpenAI key",
     "Enter to save to secure local storage. Esc to cancel.",
   );
-
   let modalSelectionIndex = 0;
   let secretBuffer = "";
   let ignoreNextSecretSubmit = false;
@@ -110,7 +111,6 @@ export function createHomeModalController(
     targetPicker.overlay.visible = activeModal === "targets";
     sessionKeyPrompt.overlay.visible = activeModal === "session-key";
     persistedKeyPrompt.overlay.visible = activeModal === "persisted-key";
-
     commandPalette.update(
       activeModal === "commands"
         ? currentCommandPaletteItems().map((item) => ({
@@ -233,6 +233,26 @@ export function createHomeModalController(
     ignoreNextSecretSubmit = true;
     syncModal();
     persistedKeyPrompt.startCursor();
+  }
+
+  async function openScreenshot() {
+    const latestScreenshot = options.getLatestScreenshot();
+    if (!latestScreenshot) {
+      options.appendSystemMessage("No screenshot is available for the latest run.", "#f87171");
+      return;
+    }
+
+    try {
+      const filePath = openScreenshotExternally(latestScreenshot);
+      options.appendSystemMessage(`Opened latest screenshot: ${filePath}`, "#4ade80");
+    } catch (error) {
+      options.appendSystemMessage(
+        error instanceof Error
+          ? `Failed to open screenshot: ${error.message}`
+          : "Failed to open screenshot.",
+        "#f87171",
+      );
+    }
   }
 
   async function selectActiveModalItem() {
@@ -406,6 +426,11 @@ export function createHomeModalController(
       return true;
     }
 
+    if (key.ctrl && key.name === "o") {
+      void openScreenshot();
+      return true;
+    }
+
     if (!activeModal) {
       return false;
     }
@@ -472,6 +497,7 @@ export function createHomeModalController(
     ],
     openModelPicker,
     openTargetPicker,
+    openScreenshot,
     openSessionKeyPrompt,
     openPersistedKeyPrompt,
     handleKeypress,

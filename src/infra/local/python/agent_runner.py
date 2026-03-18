@@ -290,6 +290,21 @@ def build_result_summary(status, failure_kind, compact_result, last_progress=Non
     return compact_result or "Run failed due to a runtime issue."
 
 
+async def capture_final_screenshot(agent, history=None):
+    try:
+        if history and hasattr(history, "screenshots"):
+            screenshots = history.screenshots(return_none_if_not_screenshot=False)
+            if screenshots:
+                return screenshots[-1]
+
+        if not getattr(agent, "browser_session", None):
+            return None
+
+        return await agent.browser_session.take_screenshot(full_page=False)
+    except Exception:
+        return None
+
+
 async def run_test():
     from browser_use import Agent, BrowserProfile
     from llm_proxy import get_llm
@@ -322,8 +337,10 @@ async def run_test():
     streamed_step_keys = set()
     last_progress_summary = ""
     browser_profile = BrowserProfile(headless=headless)
+    agent = None
 
     async def execute():
+        nonlocal agent
         emit_step(1, "Launching local browser session", "running", url)
         streamed_step_numbers.add(1)
 
@@ -374,6 +391,7 @@ async def run_test():
 
     try:
         history = await asyncio.wait_for(execute(), timeout=timeout)
+        final_screenshot = await capture_final_screenshot(agent, history)
 
         if hasattr(history, "history") and history.history:
             for index, item in enumerate(history.history, start=1):
@@ -439,6 +457,7 @@ async def run_test():
                 "result": summary_result,
                 "error": summary_result if status == "failed" else None,
                 "error_kind": failure_kind,
+                "screenshot": final_screenshot,
                 "steps": steps,
             }
         )
