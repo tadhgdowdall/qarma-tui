@@ -21,6 +21,10 @@ type HomeKey = {
   meta?: boolean;
 };
 
+type HomePaste = {
+  text: string;
+};
+
 export function mountHomeRoute(renderer: CliRenderer) {
   const runSettings = { ...defaultRunSettings };
   const statusbar = createStatusBar(renderer, runSettings);
@@ -82,6 +86,7 @@ export function mountHomeRoute(renderer: CliRenderer) {
     syncStatusbar: () => syncStatusbar(),
     handleWorkspaceSubmit,
     isWorkspaceActive: () => workspaceActive,
+    secrets: services.secrets,
   });
 
   function activateWorkspace() {
@@ -159,9 +164,10 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    landingInput.setText("");
+    landingInput.requestRender();
     activateWorkspace();
     void runController.submitRun(trimmed);
-    landingInput.clear();
   }
 
   async function handleWorkspaceSubmit(value: string) {
@@ -223,6 +229,18 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
+    if (commandResult.kind === "open-session-key-prompt") {
+      input.clear();
+      modalController.openSessionKeyPrompt();
+      return;
+    }
+
+    if (commandResult.kind === "open-persisted-key-prompt") {
+      input.clear();
+      modalController.openPersistedKeyPrompt();
+      return;
+    }
+
     if (commandResult.kind === "message") {
       runController.appendSystemMessage(
         commandResult.content,
@@ -233,8 +251,8 @@ export function mountHomeRoute(renderer: CliRenderer) {
       return;
     }
 
-    await runController.submitRun(trimmed);
     resetWorkspaceInput();
+    await runController.submitRun(trimmed);
   }
 
   renderer.keyInput.on("keypress", (key: HomeKey) => {
@@ -299,6 +317,16 @@ export function mountHomeRoute(renderer: CliRenderer) {
 
     if (!key.ctrl && !key.meta) {
       refreshCommandMenuSoon();
+    }
+  });
+
+  renderer.keyInput.on("paste", (event: HomePaste) => {
+    if (!workspaceActive) {
+      return;
+    }
+
+    if (modalController.handlePaste(event)) {
+      return;
     }
   });
 

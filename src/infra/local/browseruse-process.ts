@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import type { ResolvedModelAccess } from "../../core/models/provider";
 import type { RunFailureKind, TestRunStep } from "../../core/models/run";
+import { resolvePythonRuntime } from "../runtime/python-runtime";
 
 type BrowserUseProcessInput = {
   prompt: string;
@@ -20,6 +21,7 @@ type BrowserUseProcessResult = {
   errorMessage?: string;
   failureKind?: RunFailureKind;
   steps: TestRunStep[];
+  screenshots: string[];
 };
 
 type BrowserUseProcessHandle = {
@@ -44,6 +46,7 @@ type StreamMessage =
       result?: string;
       error?: string;
       error_kind?: RunFailureKind;
+      screenshot?: string;
       steps?: Array<{
         number?: number;
         title?: string;
@@ -131,10 +134,11 @@ export function runBrowserUseLocally(
     }
   }
 
-  const pythonBin = process.env.QARMA_PYTHON_BIN || "python3";
+  const pythonBin = resolvePythonRuntime().pythonBin;
   const proc = spawn(pythonBin, [agentRunnerPath], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
 
   const steps: TestRunStep[] = [];
@@ -142,6 +146,25 @@ export function runBrowserUseLocally(
   let stderr = "";
   let finalResult: BrowserUseProcessResult | null = null;
   let cancelled = false;
+  let forcedKillTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastStepFingerprint = "";
+
+  function killProcessTree(signal: NodeJS.Signals) {
+    if (!proc.pid) {
+      return;
+    }
+
+    if (process.platform === "win32") {
+      proc.kill(signal);
+      return;
+    }
+
+    try {
+      process.kill(-proc.pid, signal);
+    } catch {
+      proc.kill(signal);
+    }
+  }
 
   proc.stdout.on("data", (chunk: Buffer) => {
     stdoutBuffer += chunk.toString();
@@ -157,6 +180,16 @@ export function runBrowserUseLocally(
         const message = JSON.parse(line) as StreamMessage;
 
         if (message.type === "step") {
+          const fingerprint = JSON.stringify([
+            message.title || message.description || "",
+            message.status || "",
+            message.observation || "",
+          ]);
+          if (fingerprint === lastStepFingerprint) {
+            continue;
+          }
+          lastStepFingerprint = fingerprint;
+
           const step = toRunStep(
             {
               number: message.step,
@@ -181,6 +214,7 @@ export function runBrowserUseLocally(
             errorMessage: message.error,
             failureKind: message.error_kind,
             steps: resultSteps,
+            screenshots: message.screenshot ? [message.screenshot] : [],
           };
         }
       } catch {
@@ -196,14 +230,22 @@ export function runBrowserUseLocally(
   return {
     cancel() {
       cancelled = true;
-      proc.kill("SIGTERM");
+      killProcessTree("SIGTERM");
+      forcedKillTimer = setTimeout(() => {
+        killProcessTree("SIGKILL");
+      }, 2500);
     },
     result: new Promise((resolve, reject) => {
     proc.on("error", (error) => {
       reject(error);
     });
 
-    proc.on("close", (code) => {
+    proc.on("close", (code, signal) => {
+      if (forcedKillTimer) {
+        clearTimeout(forcedKillTimer);
+        forcedKillTimer = null;
+      }
+
       if (cancelled) {
         resolve({
           status: "cancelled",
@@ -211,6 +253,19 @@ export function runBrowserUseLocally(
           errorMessage: undefined,
           failureKind: "cancelled",
           steps,
+          screenshots: [],
+        });
+        return;
+      }
+
+      if (signal === "SIGTERM" || signal === "SIGKILL") {
+        resolve({
+          status: "cancelled",
+          result: "Run cancelled.",
+          errorMessage: undefined,
+          failureKind: "cancelled",
+          steps,
+          screenshots: [],
         });
         return;
       }
@@ -226,6 +281,7 @@ export function runBrowserUseLocally(
         errorMessage: stderr.trim() || `Process exited with code ${code ?? "unknown"}.`,
         failureKind: "runtime",
         steps,
+        screenshots: [],
       });
     });
     }),

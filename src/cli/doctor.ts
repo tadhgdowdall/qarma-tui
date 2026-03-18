@@ -1,4 +1,6 @@
-import { spawnSync } from "node:child_process";
+import { resolvePythonRuntime, runPythonCommand, validateLocalRunnerImports } from "../infra/runtime/python-runtime";
+import { fileURLToPath } from "node:url";
+import { macosKeychainStore } from "../infra/storage/macos-keychain-store";
 
 type DoctorStatus = "ok" | "warn" | "fail";
 
@@ -14,30 +16,15 @@ function statusIcon(status: DoctorStatus) {
   return "[fail]";
 }
 
-function runCommand(
-  command: string,
-  args: string[],
-  extraEnv: NodeJS.ProcessEnv = {},
-) {
-  return spawnSync(command, args, {
-    stdio: "pipe",
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ...extraEnv,
-    },
-  });
-}
-
 function checkPython(): DoctorCheck {
-  const pythonBin = process.env.QARMA_PYTHON_BIN || "python3";
-  const result = runCommand(pythonBin, ["--version"]);
+  const runtime = resolvePythonRuntime();
+  const result = runPythonCommand(runtime.pythonBin, ["--version"]);
 
-  if (result.error) {
+  if (result.error || result.status !== 0) {
     return {
       label: "Python",
       status: "fail",
-      detail: `Runtime "${pythonBin}" was not found.`,
+      detail: `Runtime "${runtime.pythonBin}" was not found.`,
     };
   }
 
@@ -45,65 +32,63 @@ function checkPython(): DoctorCheck {
   return {
     label: "Python",
     status: "ok",
-    detail: `${pythonBin} ${version}`,
+    detail: `${runtime.pythonBin} ${version} (${runtime.source})`,
   };
 }
 
 function checkLocalRunnerPath(): DoctorCheck {
-  const pythonBin = process.env.QARMA_PYTHON_BIN || "python3";
-  const result = runCommand(pythonBin, [
-    "-c",
-    [
-      "import sys",
-      "from pathlib import Path",
-      "root = Path.cwd() / 'src' / 'infra' / 'local' / 'python'",
-      "sys.path.insert(0, str(root))",
-      "import agent_runner, llm_proxy",
-      'print(\"local runner imports successfully\")',
-    ].join("; "),
-  ]);
+  const runtime = resolvePythonRuntime();
+  const pythonRoot = fileURLToPath(new URL("../infra/local/python", import.meta.url));
+  const result = validateLocalRunnerImports(runtime.pythonBin, pythonRoot);
 
-  if (result.status !== 0) {
-    const detail =
-      result.stderr.trim() ||
-      result.stdout.trim() ||
-      "The local Python runner could not be imported.";
+  if (!result.ok) {
     return {
       label: "Local runner path",
       status: "fail",
-      detail,
+      detail: result.detail,
     };
   }
 
   return {
     label: "Local runner path",
     status: "ok",
-    detail: result.stdout.trim() || "agent_runner.py and llm_proxy.py import successfully.",
+    detail: result.detail || "agent_runner.py and llm_proxy.py import successfully.",
   };
 }
 
-function checkOpenAiKey(): DoctorCheck {
-  const hasKey = Boolean(process.env.OPENAI_API_KEY || Bun.env.OPENAI_API_KEY);
-  if (!hasKey) {
+async function checkOpenAiKey(): Promise<DoctorCheck> {
+  const envKey = process.env.OPENAI_API_KEY || Bun.env.OPENAI_API_KEY;
+  if (envKey) {
     return {
       label: "OpenAI key",
-      status: "warn",
-      detail: "OPENAI_API_KEY is not set in this shell. Session or secure-store keys are not checked here.",
+      status: "ok",
+      detail: "OPENAI_API_KEY is available in the current environment.",
+    };
+  }
+
+  const secureKey = macosKeychainStore.isAvailable()
+    ? await macosKeychainStore.get("openai_api_key")
+    : null;
+  if (secureKey) {
+    return {
+      label: "OpenAI key",
+      status: "ok",
+      detail: "OpenAI key is available in secure local storage.",
     };
   }
 
   return {
     label: "OpenAI key",
-    status: "ok",
-    detail: "OPENAI_API_KEY is available in the current environment.",
+    status: "warn",
+    detail: "No OpenAI key is available in the current environment or secure local storage.",
   };
 }
 
-export function runDoctor() {
+export async function runDoctor() {
   const checks = [
     checkPython(),
     checkLocalRunnerPath(),
-    checkOpenAiKey(),
+    await checkOpenAiKey(),
   ];
 
   const hasFailure = checks.some((check) => check.status === "fail");

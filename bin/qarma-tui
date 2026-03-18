@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if command -v bun >/dev/null 2>&1; then
+  BUN_BIN="$(command -v bun)"
+elif [ -x "$HOME/.bun/bin/bun" ]; then
+  BUN_BIN="$HOME/.bun/bin/bun"
+else
+  echo "Qarma TUI requires Bun. Install Bun from https://bun.sh/install" >&2
+  exit 1
+fi
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec "$BUN_BIN" "$SCRIPT_DIR/../src/index.ts" "$@"

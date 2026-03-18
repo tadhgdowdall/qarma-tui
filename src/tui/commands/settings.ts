@@ -7,6 +7,9 @@ export type SettingsCommandResult =
   | { kind: "noop" }
   | { kind: "open-model-picker" }
   | { kind: "open-target-picker" }
+  | { kind: "open-screenshot-modal" }
+  | { kind: "open-session-key-prompt" }
+  | { kind: "open-persisted-key-prompt" }
   | { kind: "message"; content: string; accent?: string };
 
 export type CommandSuggestion = {
@@ -38,8 +41,9 @@ const COMMAND_SUGGESTIONS: CommandSuggestion[] = [
   { command: "settings", insertValue: "/settings", summary: "show effective runtime settings", keywords: ["config", "status"] },
   { command: "model", insertValue: "/model", summary: "open the model picker or set a model", keywords: ["models", "picker", "openai", "gpt"], requiresArgument: false },
   { command: "help", insertValue: "/help", summary: "show commands and shortcuts", keywords: ["commands", "shortcuts"] },
-  { command: "openai-key", insertValue: "/openai-key ", summary: "load an OpenAI key for this session", keywords: ["key", "secret", "session"], requiresArgument: true },
-  { command: "save-openai-key", insertValue: "/save-openai-key ", summary: "save an OpenAI key to secure local storage", keywords: ["keychain", "secure", "persist"], requiresArgument: true },
+  { command: "screenshot", insertValue: "/screenshot", summary: "open the latest run screenshot", keywords: ["evidence", "image", "result"] },
+  { command: "openai-key", insertValue: "/openai-key", summary: "load an OpenAI key for this session", keywords: ["key", "secret", "session"], requiresArgument: false },
+  { command: "save-openai-key", insertValue: "/save-openai-key", summary: "save an OpenAI key to secure local storage", keywords: ["keychain", "secure", "persist"], requiresArgument: false },
   { command: "clear-openai-key", insertValue: "/clear-openai-key", summary: "remove the session key override", keywords: ["reset", "key"] },
   { command: "clear-saved-openai-key", insertValue: "/clear-saved-openai-key", summary: "remove the saved secure OpenAI key", keywords: ["keychain", "reset", "key"] },
   { command: "provider", insertValue: "/provider ", summary: "switch the provider profile", keywords: ["openai-local", "qarma-managed"], requiresArgument: true },
@@ -327,9 +331,10 @@ export async function applySettingsCommand(
         "Commands",
         "  /settings",
         "  /target [url|local|staging|prod]",
-        "  /openai-key <key>",
+        "  /screenshot",
+        "  /openai-key",
         "  /clear-openai-key",
-        "  /save-openai-key <key>",
+        "  /save-openai-key",
         "  /clear-saved-openai-key",
         "  /cancel",
         "  /rerun",
@@ -341,6 +346,7 @@ export async function applySettingsCommand(
         "Shortcuts",
         "  up/down browse slash commands",
         "  ctrl+p open command palette",
+        "  ctrl+o open latest screenshot",
         "  ctrl+y copy selected text",
         "  tab toggle sidebar",
         "  esc close modal",
@@ -352,6 +358,10 @@ export async function applySettingsCommand(
 
   if (command === "models") {
     return { kind: "open-model-picker" };
+  }
+
+  if (command === "screenshot") {
+    return { kind: "open-screenshot-modal" };
   }
 
   if (command === "target") {
@@ -384,14 +394,15 @@ export async function applySettingsCommand(
   }
 
   if (command === "openai-key") {
-    if (!argument) {
-      return { kind: "message", content: "Usage: /openai-key sk-...", accent: "#f87171" };
+    if (argument) {
+      return {
+        kind: "message",
+        content: "For security, use /openai-key without an inline value.",
+        accent: "#f87171",
+      };
     }
-    secrets.set(OPENAI_SECRET_REF, argument);
     return {
-      kind: "message",
-      content: "OpenAI key loaded for this session only.",
-      accent: "#4ade80",
+      kind: "open-session-key-prompt",
     };
   }
 
@@ -405,29 +416,21 @@ export async function applySettingsCommand(
   }
 
   if (command === "save-openai-key") {
-    if (!argument) {
-      return { kind: "message", content: "Usage: /save-openai-key sk-...", accent: "#f87171" };
+    if (argument) {
+      return {
+        kind: "message",
+        content: "For security, use /save-openai-key without an inline value.",
+        accent: "#f87171",
+      };
     }
 
     if (!macosKeychainStore.isAvailable()) {
       return { kind: "message", content: "Secure key storage is not available on this platform.", accent: "#f87171" };
     }
 
-    try {
-      macosKeychainStore.set(OPENAI_SECRET_REF, argument);
-      secrets.clear(OPENAI_SECRET_REF);
-      return {
-        kind: "message",
-        content: "Saved OpenAI key to secure local storage.",
-        accent: "#4ade80",
-      };
-    } catch (error) {
-      return {
-        kind: "message",
-        content: error instanceof Error ? error.message : "Failed to save key to secure local storage.",
-        accent: "#f87171",
-      };
-    }
+    return {
+      kind: "open-persisted-key-prompt",
+    };
   }
 
   if (command === "clear-saved-openai-key") {
